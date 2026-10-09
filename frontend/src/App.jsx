@@ -43,6 +43,63 @@ function evidenceClass(level) {
   return `evidence ${level || "no_evidence"}`;
 }
 
+// This quantity-based measure is not a calibrated probability of correctness.
+const EVIDENCE_SUPPORT_EXPLANATION =
+  "Evidence support measures the quantity of review mentions across the selected aspects. " +
+  "It is not the probability that this recommendation is correct.";
+
+function hasDirectReviewEvidence(aspect) {
+  return Number(aspect.mention_count ?? 0) > 0;
+}
+
+// Suppress prior-only estimates from user-facing score bars and numerical tables.
+// The unchanged backend may still use the aspect prior when ranking laptops.
+function supportedScore100(aspect) {
+  if (!hasDirectReviewEvidence(aspect) || aspect.adjusted_score == null) return null;
+  const score = Number(aspect.adjusted_score) * 100;
+  return Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : null;
+}
+
+function getPreviewAspects(breakdown, mode) {
+  const available = breakdown.filter(
+    (aspect) => !RETIRED_ASPECT_IDS.has(aspect.aspect_id) &&
+      Number(aspect.normalized_weight) > 0
+  );
+
+  if (mode === "custom") {
+    // A custom ranking may contain fewer than six selected aspects.
+    // Display the actual highest-weighted choices, even if evidence is missing.
+    return [...available]
+      .sort((a, b) => Number(b.normalized_weight) - Number(a.normalized_weight) ||
+        a.aspect_name.localeCompare(b.aspect_name))
+      .slice(0, 6);
+  }
+
+  // Balanced rankings have equal weights. Show both higher- and lower-scoring
+  // aspects, preferring those with >= 10 mentions (moderate/strong support).
+  // Add aspects with >= 5 mentions only if fewer than four stronger rows exist.
+  const wellSupported = available.filter((a) => Number(a.mention_count) >= 10);
+  const limited = available.filter(
+    (a) => Number(a.mention_count) >= 5 && Number(a.mention_count) < 10
+  );
+  const candidates = wellSupported.length >= 4
+    ? wellSupported
+    : [...wellSupported, ...limited];
+
+  const sorted = candidates
+    .filter((a) => supportedScore100(a) !== null)
+    .sort((a, b) => supportedScore100(b) - supportedScore100(a) ||
+      a.aspect_name.localeCompare(b.aspect_name));
+  const total = Math.min(6, sorted.length);
+  const higher = sorted.slice(0, Math.ceil(total / 2));
+  const lowerCount = Math.floor(total / 2);
+  const lower = lowerCount > 0 ? sorted.slice(-lowerCount) : [];
+  return [...higher, ...lower].sort(
+    (a, b) => supportedScore100(b) - supportedScore100(a) ||
+      a.aspect_name.localeCompare(b.aspect_name)
+  );
+}
+
 function App() {
   const [health, setHealth] = useState(null);
   const [aspects, setAspects] = useState([]);
@@ -53,6 +110,9 @@ function App() {
   const [topN, setTopN] = useState(5);
 
   const [results, setResults] = useState([]);
+  // Capture the mode that generated the displayed results. Changing the
+  // preference form afterwards must not silently change the preview logic.
+  const [resultsMode, setResultsMode] = useState("balanced");
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedLaptop, setSelectedLaptop] = useState(null);
 
@@ -167,6 +227,7 @@ function App() {
     try {
       const response = await getRecommendations(buildPayload());
       setResults(response.recommendations);
+      setResultsMode(recommendationMode);
       setHasSearched(true);
 
       setTimeout(() => {
@@ -615,7 +676,7 @@ function App() {
           <SectionHeader
             number="03"
             title="Your recommendations"
-            text="Recommendation score and evidence confidence are shown separately."
+            text="Recommendation score and evidence support are shown separately."
             action={
               hasSearched ? (
                 <span className="count">{results.length} results</span>
@@ -639,6 +700,7 @@ function App() {
                 <RecommendationCard
                   key={item.laptop_id}
                   item={item}
+                  resultsMode={resultsMode}
                   onDetails={showDetails}
                   detailLoading={detailLoading}
                 />
@@ -722,7 +784,9 @@ function Empty({ title, text }) {
   );
 }
 
-function RecommendationCard({ item, onDetails, detailLoading }) {
+function RecommendationCard({ item, resultsMode, onDetails, detailLoading }) {
+  const preview = getPreviewAspects(item.aspect_breakdown, resultsMode);
+
   return (
     <article className="card">
       <div className="rank">
@@ -778,7 +842,16 @@ function RecommendationCard({ item, onDetails, detailLoading }) {
 
           <div className="confidence">
             <div>
-              <span>Evidence confidence</span>
+              <span className="evidence-support-title">
+                Evidence support
+                <span
+                  className="evidence-support-help"
+                  tabIndex={0}
+                  role="note"
+                  aria-label={EVIDENCE_SUPPORT_EXPLANATION}
+                  title={EVIDENCE_SUPPORT_EXPLANATION}
+                >ⓘ</span>
+              </span>
               <strong>
                 {item.evidence_confidence_0_100.toFixed(1)}%
               </strong>
@@ -794,38 +867,72 @@ function RecommendationCard({ item, onDetails, detailLoading }) {
               />
             </div>
             <small>
-              direct evidence for {item.selected_aspects_with_evidence}/
-              {item.selected_aspects} selected aspects
+              Direct review mentions for {item.selected_aspects_with_evidence}/
+              {item.selected_aspects} selected aspects · not a correctness probability
             </small>
           </div>
         </div>
 
-        <div className="breakdown" aria-label="Aspect score breakdown">
-          <div className="breakdown-header">
-            <span>Aspect</span>
-            <span>Weight</span>
-            <span>Aspect Score</span>
-            <span>Evidence</span>
+        <div className="aspect-preview" aria-label="Selected aspect score highlights">
+          <div className="aspect-preview-heading">
+            <div>
+              <strong>Aspect score highlights</strong>
+              <small>
+                {resultsMode === "custom"
+                  ? "Your most heavily weighted aspects"
+                  : "Higher and lower scores with review support"}
+              </small>
+            </div>
+            <span>0–100 score</span>
           </div>
-          {[...item.aspect_breakdown]
-            .filter((aspect) => !RETIRED_ASPECT_IDS.has(aspect.aspect_id))
-            .sort((a, b) => b.normalized_weight - a.normalized_weight)
-            .map((aspect) => (
-              <div className="breakdown-row" key={aspect.aspect_id}>
-                <strong>{aspect.aspect_name}</strong>
-                <span className="breakdown-weight">
-                  {(aspect.normalized_weight * 100).toFixed(3)}%
-                </span>
-                <span className="breakdown-score" title="Adjusted aspect score out of 100">
-                  {(aspect.adjusted_score * 100).toFixed(1)}
-                </span>
-                <b className={evidenceClass(aspect.evidence_level)}>
-                  {aspect.evidence_level.replace("_", " ")}
-                </b>
-              </div>
-            ))}
+          {preview.length === 0 ? (
+            <p className="aspect-preview-empty">
+              Not enough direct review evidence for a meaningful score preview.
+              Open the evidence details for all aspects.
+            </p>
+          ) : (
+            <div className="aspect-preview-list">
+              {preview.map((aspect) => {
+                const score = supportedScore100(aspect);
+                const label = (aspect.evidence_level || "no_evidence").replaceAll("_", " ");
+                return (
+                  <div className={`aspect-preview-row ${score === null ? "no-direct-evidence" : ""}`}
+                    key={aspect.aspect_id}
+                    title={score === null
+                      ? `${aspect.aspect_name}: no direct review evidence; a global aspect prior is used internally for ranking.`
+                      : `${aspect.aspect_name}: ${score.toFixed(1)}/100 adjusted score; ${aspect.mention_count} review mentions; ${label} evidence.`}
+                  >
+                    <div className="aspect-preview-name">
+                      <strong>{aspect.aspect_name}</strong>
+                      {resultsMode === "custom" && (
+                        <small>{(aspect.normalized_weight * 100).toFixed(3)}% weight</small>
+                      )}
+                    </div>
+                    <div className="aspect-preview-track"
+                      role="img"
+                      aria-label={score === null
+                        ? `${aspect.aspect_name}: no direct evidence`
+                        : `${aspect.aspect_name}: ${score.toFixed(1)} out of 100`}
+                    >
+                      {score !== null && (
+                        <div className="aspect-preview-fill" style={{ width: `${score}%` }} />
+                      )}
+                    </div>
+                    <strong className="aspect-preview-value">
+                      {score === null ? "N/A" : score.toFixed(1)}
+                    </strong>
+                    <b className={evidenceClass(aspect.evidence_level)}>{label}</b>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="aspect-preview-note">
+            Adjusted sentiment scores, not hardware benchmarks. N/A means no
+            direct review mentions; ranking may still use a corpus-wide prior.
+            <span className="aspect-preview-more"> All selectable aspects and source reviews are in Evidence Details.</span>
+          </p>
         </div>
-
         <div className="actions">
           <button
             type="button"
@@ -853,10 +960,14 @@ function RecommendationCard({ item, onDetails, detailLoading }) {
 
 
 function LaptopModal({ laptop, onClose }) {
-  const aspects = [...laptop.aspects]
-    .filter((a) => !RETIRED_ASPECT_IDS.has(a.aspect_id))
-    .filter((a) => a.has_direct_evidence || a.mention_count > 0)
-    .sort((a, b) => b.mention_count - a.mention_count);
+  // Keep all 23 selectable aspects in both the chart and detailed table.
+  // Rows without mentions display N/A and cannot request source reviews.
+  const selectableAspects = laptop.aspects.filter(
+    (a) => !RETIRED_ASPECT_IDS.has(a.aspect_id)
+  );
+  const aspects = [...selectableAspects]
+    .sort((a, b) => b.mention_count - a.mention_count ||
+      a.aspect_name.localeCompare(b.aspect_name));
 
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
@@ -864,6 +975,7 @@ function LaptopModal({ laptop, onClose }) {
   const [evidenceError, setEvidenceError] = useState("");
 
   async function loadEvidence(aspect) {
+    if (!hasDirectReviewEvidence(aspect)) return;
     if (
       selectedEvidence?.aspect_id === aspect.aspect_id &&
       !evidenceLoading
@@ -991,12 +1103,15 @@ function LaptopModal({ laptop, onClose }) {
           />
         </div>
 
+        <AspectScoreChart aspects={selectableAspects} />
+
         <div className="modal-evidence-heading">
           <div>
             <h3>Review-derived aspect evidence</h3>
             <p>
-              Select “Show reviews” to trace an aspect score back to
-              representative source-review snippets.
+              Adjusted scores are shown only when direct reviews exist.
+              Select “Show reviews” to inspect source snippets; N/A means no
+              direct evidence, although ranking may use a global prior.
             </p>
           </div>
         </div>
@@ -1004,9 +1119,9 @@ function LaptopModal({ laptop, onClose }) {
         <div className="evidence-table">
           <div className="table-head evidence-table-six">
             <span>Aspect</span>
-            <span>Score</span>
+            <span>Adjusted Score</span>
             <span>Mentions</span>
-            <span>Confidence</span>
+            <span>Support</span>
             <span>Evidence</span>
             <span>Reviews</span>
           </div>
@@ -1021,7 +1136,13 @@ function LaptopModal({ laptop, onClose }) {
               key={aspect.aspect_id}
             >
               <strong>{aspect.aspect_name}</strong>
-              <span>{(aspect.adjusted_score * 100).toFixed(1)}</span>
+              <span title={hasDirectReviewEvidence(aspect)
+                ? "Stored adjusted sentiment score from review evidence and the corpus-wide prior."
+                : "N/A: no direct review mentions. A corpus-wide prior is used internally for ranking."}>
+                {supportedScore100(aspect) === null
+                  ? "N/A"
+                  : supportedScore100(aspect).toFixed(1)}
+              </span>
               <span>{aspect.mention_count}</span>
               <span>
                 {(aspect.evidence_confidence * 100).toFixed(1)}%
@@ -1032,14 +1153,19 @@ function LaptopModal({ laptop, onClose }) {
               <button
                 type="button"
                 className="review-evidence-button"
-                disabled={evidenceLoading}
+                disabled={evidenceLoading || !hasDirectReviewEvidence(aspect)}
+                title={!hasDirectReviewEvidence(aspect)
+                  ? "No reviews mention this aspect for this laptop."
+                  : undefined}
                 onClick={() => loadEvidence(aspect)}
               >
-                {loadingAspectId === aspect.aspect_id
-                  ? "Loading…"
-                  : selectedEvidence?.aspect_id === aspect.aspect_id
-                    ? "Hide reviews"
-                    : "Show reviews"}
+                {!hasDirectReviewEvidence(aspect)
+                  ? "No reviews"
+                  : loadingAspectId === aspect.aspect_id
+                    ? "Loading…"
+                    : selectedEvidence?.aspect_id === aspect.aspect_id
+                      ? "Hide reviews"
+                      : "Show reviews"}
               </button>
             </div>
           ))}
@@ -1056,6 +1182,96 @@ function LaptopModal({ laptop, onClose }) {
         )}
       </div>
     </div>
+  );
+}
+
+// Visualize stored, offline-calculated scores. This chart never runs ATE/ABSA
+// or changes the user's preference-based recommendation ranking.
+function AspectScoreChart({ aspects }) {
+  const ordered = [...aspects].sort((a, b) => {
+    const aSupported = hasDirectReviewEvidence(a);
+    const bSupported = hasDirectReviewEvidence(b);
+    if (aSupported !== bSupported) return aSupported ? -1 : 1;
+    return (supportedScore100(b) ?? -1) - (supportedScore100(a) ?? -1) ||
+      a.aspect_name.localeCompare(b.aspect_name);
+  });
+
+  return (
+    <section className="aspect-score-chart" aria-labelledby="aspect-chart-title">
+      <div className="aspect-score-chart-heading">
+        <div>
+          <h3 id="aspect-chart-title">Aspect score overview</h3>
+          <p>
+            All {aspects.length} selectable aspects. Supported aspects are ordered
+            by adjusted score, with no-evidence aspects last. Scores do not depend
+            on your current preference weights.
+          </p>
+        </div>
+        <span className="aspect-score-chart-count">0–100 scale</span>
+      </div>
+
+      <div className="aspect-score-chart-legend">
+        <span className="aspect-score-chart-key" aria-hidden="true" />
+        <span>Adjusted sentiment score</span>
+        <span className="aspect-score-chart-legend-divider" aria-hidden="true">·</span>
+        <span>Evidence strength is shown separately</span>
+      </div>
+
+      <div
+        className="aspect-score-chart-scroll"
+        role="region"
+        aria-label="All selectable laptop aspects, with unsupported aspects listed last"
+        tabIndex={0}
+      >
+        {ordered.map((aspect) => {
+          const score = supportedScore100(aspect);
+          const label = (aspect.evidence_level || "no_evidence").replaceAll("_", " ");
+          const mentions = aspect.mention_count ?? 0;
+          const confidence = Number(aspect.evidence_confidence ?? 0) * 100;
+          const scoreLabel = score === null ? "N/A (no direct evidence)" : `${score.toFixed(1)}/100`;
+
+          return (
+            <div
+              className={`aspect-score-chart-row ${
+                hasDirectReviewEvidence(aspect) ? "" : "no-direct-evidence"
+              }`}
+              key={aspect.aspect_id}
+              title={`${aspect.aspect_name}: ${scoreLabel}; ${mentions} mentions; ${confidence.toFixed(1)}% evidence support; ${label} evidence`}
+            >
+              <span className="aspect-score-chart-name">{aspect.aspect_name}</span>
+              <div
+                className="aspect-score-chart-track"
+                role="img"
+                aria-label={score === null
+                  ? `${aspect.aspect_name}: no direct review evidence`
+                  : `${aspect.aspect_name}: ${scoreLabel}`}
+              >
+                {score !== null && (
+                  <div
+                    className="aspect-score-chart-fill"
+                    style={{ width: `${score}%` }}
+                    aria-hidden="true"
+                  />
+                )}
+              </div>
+              <strong className="aspect-score-chart-value">
+                {score === null ? "N/A" : score.toFixed(1)}
+              </strong>
+              <span className="aspect-score-chart-evidence">
+                <b className={evidenceClass(aspect.evidence_level)}>{label}</b>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="aspect-score-chart-note">
+        Bars show stored, prior-adjusted review sentiment scores, not hardware
+        benchmarks. N/A means zero direct mentions; these aspects have no plotted
+        score, even though the ranking engine uses their global prior as a fallback.
+        Limited or insufficient evidence should not be treated as confirmed quality.
+      </p>
+    </section>
   );
 }
 
@@ -1118,7 +1334,7 @@ function AspectReviewEvidence({ evidence }) {
           value={summary.mixed_reviews}
         />
         <div className="evidence-confidence-tile">
-          <span>Evidence confidence</span>
+          <span title={EVIDENCE_SUPPORT_EXPLANATION}>Evidence support ⓘ</span>
           <strong>
             {evidence.evidence_confidence_0_100.toFixed(1)}%
           </strong>
