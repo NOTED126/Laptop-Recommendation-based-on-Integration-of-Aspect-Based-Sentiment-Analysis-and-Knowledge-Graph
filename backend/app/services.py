@@ -7,6 +7,11 @@ from .db import db
 from .models import RecommendationRequest
 
 
+# Retain historical evidence in Neo4j, but do not use overlapping
+# umbrella aspects as user-selectable recommendation preferences.
+RETIRED_RECOMMENDATION_ASPECT_IDS = frozenset({"FEATURE_SET"})
+
+
 def normalize_weights(weights: Dict[str, float]) -> List[dict]:
     total = sum(weights.values())
 
@@ -121,6 +126,7 @@ def build_filter_clause(filters):
 def get_aspects():
     query = """
     MATCH (a:Aspect)
+    WHERE NOT (a.aspect_id IN $retired_aspect_ids)
     RETURN
         a.aspect_id AS aspect_id,
         a.aspect_name AS aspect_name,
@@ -132,7 +138,10 @@ def get_aspects():
     ORDER BY a.aspect_name
     """
 
-    return db.execute_read(query)
+    return db.execute_read(
+        query,
+        {"retired_aspect_ids": sorted(RETIRED_RECOMMENDATION_ASPECT_IDS)},
+    )
 
 
 def get_valid_aspect_ids():
@@ -154,7 +163,7 @@ def validate_aspect_ids(weights):
         raise HTTPException(
             status_code=400,
             detail={
-                "message": "Unknown canonical aspect ID(s).",
+                "message": "Unknown or retired recommendation aspect ID(s).",
                 "invalid_aspects": invalid,
                 "valid_aspects": sorted(valid),
             },

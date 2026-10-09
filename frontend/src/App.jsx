@@ -14,6 +14,10 @@ const DEFAULT_WEIGHTS = {
   THERMAL_PERFORMANCE: 20,
 };
 
+// Keep the underlying Neo4j evidence but exclude overlapping umbrella aspects
+// from the recommendation preferences and user-facing aspect breakdowns.
+const RETIRED_ASPECT_IDS = new Set(["FEATURE_SET"]);
+
 const EMPTY_FILTERS = {
   min_ram: "",
   min_storage: "",
@@ -61,7 +65,7 @@ function App() {
     Promise.all([getHealth(), getAspects(), getFilters()])
       .then(([h, a, f]) => {
         setHealth(h);
-        setAspects(a);
+        setAspects(a.filter((aspect) => !RETIRED_ASPECT_IDS.has(aspect.aspect_id)));
         setFilterOptions(f);
       })
       .catch((err) => {
@@ -136,7 +140,7 @@ function App() {
       );
     } else {
       for (const [aspectId, value] of Object.entries(weights)) {
-        if (Number(value) > 0) {
+        if (Number(value) > 0 && !RETIRED_ASPECT_IDS.has(aspectId)) {
           cleanWeights[aspectId] = Number(value);
         }
       }
@@ -796,18 +800,23 @@ function RecommendationCard({ item, onDetails, detailLoading }) {
           </div>
         </div>
 
-        <div className="breakdown">
+        <div className="breakdown" aria-label="Aspect score breakdown">
+          <div className="breakdown-header">
+            <span>Aspect</span>
+            <span>Weight</span>
+            <span>Aspect Score</span>
+            <span>Evidence</span>
+          </div>
           {[...item.aspect_breakdown]
+            .filter((aspect) => !RETIRED_ASPECT_IDS.has(aspect.aspect_id))
             .sort((a, b) => b.normalized_weight - a.normalized_weight)
             .map((aspect) => (
-              <div key={aspect.aspect_id}>
-                <div>
-                  <strong>{aspect.aspect_name}</strong>
-                  <small>
-                    {(aspect.normalized_weight * 100).toFixed(0)}% weight
-                  </small>
-                </div>
-                <span>
+              <div className="breakdown-row" key={aspect.aspect_id}>
+                <strong>{aspect.aspect_name}</strong>
+                <span className="breakdown-weight">
+                  {(aspect.normalized_weight * 100).toFixed(3)}%
+                </span>
+                <span className="breakdown-score" title="Adjusted aspect score out of 100">
                   {(aspect.adjusted_score * 100).toFixed(1)}
                 </span>
                 <b className={evidenceClass(aspect.evidence_level)}>
@@ -845,6 +854,7 @@ function RecommendationCard({ item, onDetails, detailLoading }) {
 
 function LaptopModal({ laptop, onClose }) {
   const aspects = [...laptop.aspects]
+    .filter((a) => !RETIRED_ASPECT_IDS.has(a.aspect_id))
     .filter((a) => a.has_direct_evidence || a.mention_count > 0)
     .sort((a, b) => b.mention_count - a.mention_count);
 
