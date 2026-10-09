@@ -1100,3 +1100,54 @@ footer p { max-width: 480px; margin: 0; text-align: right; }
   .aspect-preview-track { grid-column: 1; grid-row: 2; }
   .aspect-preview-value { grid-column: 2; grid-row: 2; }
 }
+
+
+/* Clear column headings above both score-bar views. These headers use the
+   same grid columns as the bars directly below them for reliable alignment. */
+.aspect-preview-columns,
+.aspect-score-chart-columns {
+  display: grid;
+  align-items: center;
+  color: var(--muted);
+  font-size: .64rem;
+  font-weight: 800;
+  letter-spacing: .012em;
+  background: #f8f9fc;
+  border-bottom: 1px solid #e6eaf2;
+}
+
+.aspect-preview-columns {
+  grid-template-columns: minmax(116px, 160px) minmax(90px, 1fr) 45px minmax(80px, 92px);
+  gap: .65rem;
+  padding: .5rem 0;
+}
+
+.aspect-score-chart-columns {
+  grid-template-columns: minmax(130px, 180px) minmax(90px, 1fr) 47px 100px;
+  gap: .75rem;
+  padding: .55rem .15rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.aspect-preview-columns > span:nth-child(3),
+.aspect-score-chart-columns > span:nth-child(3) {
+  text-align: right;
+}
+
+@media (max-width: 950px) {
+  .aspect-preview-columns {
+    grid-template-columns: minmax(105px, 150px) minmax(70px, 1fr) 45px 85px;
+    gap: .45rem;
+  }
+}
+
+/* The small-screen bar layout becomes two rows; column headings would no
+   longer align, so the descriptive chart title acts as the heading instead. */
+@media (max-width: 640px) {
+  .aspect-score-chart-columns { display: none; }
+}
+@media (max-width: 600px) {
+  .aspect-preview-columns { display: none; }
+}

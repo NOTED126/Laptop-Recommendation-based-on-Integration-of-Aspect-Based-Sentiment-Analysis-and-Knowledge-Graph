@@ -892,6 +892,12 @@ function RecommendationCard({ item, resultsMode, onDetails, detailLoading }) {
             </p>
           ) : (
             <div className="aspect-preview-list">
+              <div className="aspect-preview-columns" aria-label="Aspect highlight column headings">
+                <span>{resultsMode === "custom" ? "Aspect / Weight" : "Aspect"}</span>
+                <span>Score bar</span>
+                <span>Score</span>
+                <span>Evidence</span>
+              </div>
               {preview.map((aspect) => {
                 const score = supportedScore100(aspect);
                 const label = (aspect.evidence_level || "no_evidence").replaceAll("_", " ");
@@ -1223,6 +1229,12 @@ function AspectScoreChart({ aspects }) {
         aria-label="All selectable laptop aspects, with unsupported aspects listed last"
         tabIndex={0}
       >
+        <div className="aspect-score-chart-columns" aria-label="Aspect score column headings">
+          <span>Aspect</span>
+          <span>Score bar</span>
+          <span>Score</span>
+          <span>Evidence</span>
+        </div>
         {ordered.map((aspect) => {
           const score = supportedScore100(aspect);
           const label = (aspect.evidence_level || "no_evidence").replaceAll("_", " ");
