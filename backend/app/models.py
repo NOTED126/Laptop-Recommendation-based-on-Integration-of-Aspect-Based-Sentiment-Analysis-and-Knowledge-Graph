@@ -187,6 +187,15 @@ class LaptopDetail(BaseModel):
 
     aspects: List[dict]
 
+    # Approved, offline-generated summaries stored on Laptop nodes.
+    overall_summary: Optional[str] = None
+    strengths_summary: Optional[str] = None
+    weaknesses_summary: Optional[str] = None
+    summary_evidence_note: Optional[str] = None
+    summary_model: Optional[str] = None
+    summary_prompt_version: Optional[str] = None
+    summary_source_hash: Optional[str] = None
+
 
 class EvidenceSummary(BaseModel):
     positive_reviews: int

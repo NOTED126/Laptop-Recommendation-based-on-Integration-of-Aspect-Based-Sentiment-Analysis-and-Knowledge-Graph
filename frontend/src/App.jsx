@@ -7,6 +7,7 @@ import {
   getLaptop,
   getRecommendations,
 } from "./api";
+import ComparisonPanel from "./ComparisonPanel";
 
 const DEFAULT_WEIGHTS = {
   BATTERY_LIFE: 50,
@@ -115,6 +116,9 @@ function App() {
   const [resultsMode, setResultsMode] = useState("balanced");
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedLaptop, setSelectedLaptop] = useState(null);
+  // Comparison is local to the displayed recommendation result set.
+  const [compareIds, setCompareIds] = useState([]);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -161,6 +165,26 @@ function App() {
       [aspectId]: Number(value),
     }));
   }
+
+  function toggleCompare(laptopId) {
+    setCompareIds((current) => {
+      if (current.includes(laptopId)) {
+        return current.filter((id) => id !== laptopId);
+      }
+      return current.length < 3 ? [...current, laptopId] : current;
+    });
+  }
+
+  function removeComparisonLaptop(laptopId) {
+    const updated = compareIds.filter((id) => id !== laptopId);
+    setCompareIds(updated);
+    // The comparison requires at least two laptops to remain meaningful.
+    if (updated.length < 2) setCompareOpen(false);
+  }
+
+  const comparedLaptops = compareIds
+    .map((id) => results.find((item) => item.laptop_id === id))
+    .filter(Boolean);
 
   function buildPayload() {
     const cleanFilters = {};
@@ -229,6 +253,10 @@ function App() {
       setResults(response.recommendations);
       setResultsMode(recommendationMode);
       setHasSearched(true);
+      // A new ranking may exclude earlier candidates or use different weights.
+      // Clear comparisons instead of comparing stale recommendation results.
+      setCompareIds([]);
+      setCompareOpen(false);
 
       setTimeout(() => {
         document
@@ -703,12 +731,63 @@ function App() {
                   resultsMode={resultsMode}
                   onDetails={showDetails}
                   detailLoading={detailLoading}
+                  isCompared={compareIds.includes(item.laptop_id)}
+                  comparisonFull={compareIds.length >= 3}
+                  onToggleCompare={toggleCompare}
                 />
               ))}
             </div>
           )}
         </section>
       </main>
+
+      {comparedLaptops.length > 0 && !compareOpen && (
+        <section className="comparison-tray" aria-label="Selected laptops for comparison">
+          <div className="comparison-tray-copy">
+            <strong>Compare laptops</strong>
+            <span>{comparedLaptops.length}/3 selected · Choose 2 or 3</span>
+          </div>
+          <div className="comparison-tray-chips">
+            {comparedLaptops.map((laptop) => (
+              <button
+                type="button"
+                key={laptop.laptop_id}
+                className="comparison-tray-chip"
+                onClick={() => removeComparisonLaptop(laptop.laptop_id)}
+                title={`Remove ${laptop.laptop} from comparison`}
+                aria-label={`Remove ${laptop.laptop} from comparison`}
+              >
+                <span>{laptop.laptop}</span> ×
+              </button>
+            ))}
+          </div>
+          <div className="comparison-tray-actions">
+            <button type="button" className="secondary comparison-clear" onClick={() => setCompareIds([])}>
+              Clear
+            </button>
+            <button
+              type="button"
+              className="primary comparison-start"
+              disabled={comparedLaptops.length < 2}
+              onClick={() => {
+                setSelectedLaptop(null);
+                setCompareOpen(true);
+              }}
+            >
+              Compare selected ({comparedLaptops.length})
+            </button>
+          </div>
+        </section>
+      )}
+
+      {compareOpen && comparedLaptops.length >= 2 && (
+        <ComparisonPanel
+          items={comparedLaptops}
+          resultsMode={resultsMode}
+          onClose={() => setCompareOpen(false)}
+          onRemove={removeComparisonLaptop}
+        />
+      )}
 
       <footer>
         <div>
@@ -784,7 +863,10 @@ function Empty({ title, text }) {
   );
 }
 
-function RecommendationCard({ item, resultsMode, onDetails, detailLoading }) {
+function RecommendationCard({
+  item, resultsMode, onDetails, detailLoading,
+  isCompared, comparisonFull, onToggleCompare,
+}) {
   const preview = getPreviewAspects(item.aspect_breakdown, resultsMode);
 
   return (
@@ -940,6 +1022,18 @@ function RecommendationCard({ item, resultsMode, onDetails, detailLoading }) {
           </p>
         </div>
         <div className="actions">
+          <button
+            type="button"
+            className={`compare-pick-button ${isCompared ? "selected" : ""}`}
+            aria-pressed={isCompared}
+            disabled={comparisonFull && !isCompared}
+            title={comparisonFull && !isCompared
+              ? "Maximum 3 laptops selected. Remove one to choose another."
+              : isCompared ? "Remove from comparison" : "Add to comparison"}
+            onClick={() => onToggleCompare(item.laptop_id)}
+          >
+            {isCompared ? "✓ Selected" : comparisonFull ? "Max 3 selected" : "+ Compare"}
+          </button>
           <button
             type="button"
             className="secondary"
@@ -1108,6 +1202,39 @@ function LaptopModal({ laptop, onClose }) {
             }
           />
         </div>
+
+        {laptop.overall_summary && (
+          <section className="laptop-experience-summary" aria-label="AI-assisted laptop experience summary">
+            <div className="laptop-experience-summary-head">
+              <div>
+                <h3>Laptop experience summary</h3>
+                <p>Fixed, AI-assisted summary of this laptop’s review-derived aspect evidence.</p>
+              </div>
+              <span className="laptop-experience-summary-tag">Offline · Reviewed</span>
+            </div>
+            <div className="laptop-summary-overall">
+              <strong>Overall assessment</strong>
+              <p>{laptop.overall_summary}</p>
+            </div>
+            <div className="laptop-summary-two-col">
+              <div className="laptop-summary-strength">
+                <strong>Supported strengths</strong>
+                <p>{laptop.strengths_summary || "No clearly supported strengths identified."}</p>
+              </div>
+              <div className="laptop-summary-weakness">
+                <strong>Potential weaknesses</strong>
+                <p>{laptop.weaknesses_summary || "No clearly supported weaknesses identified."}</p>
+              </div>
+            </div>
+            {laptop.summary_evidence_note && (
+              <p className="laptop-summary-caution"><strong>Evidence limitations:</strong> {laptop.summary_evidence_note}</p>
+            )}
+            <p className="laptop-summary-disclaimer">
+              Generated offline from ABSA-predicted review sentiment and validated before publication.
+              Describes review evidence, not measured hardware performance; does not depend on your selected preference weights.
+            </p>
+          </section>
+        )}
 
         <AspectScoreChart aspects={selectableAspects} />
 

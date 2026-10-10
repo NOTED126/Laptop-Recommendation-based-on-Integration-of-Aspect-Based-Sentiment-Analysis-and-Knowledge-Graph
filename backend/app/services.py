@@ -471,7 +471,23 @@ def get_laptop_detail(laptop_id: str):
         l.battery_life_hours AS battery_life_hours,
 
         l.image_url AS image_url,
-        l.product_url AS product_url
+        l.product_url AS product_url,
+
+        // Only approved offline summaries are visible to website visitors.
+        CASE WHEN l.summary_status = 'approved' THEN l.overall_summary ELSE null END
+            AS overall_summary,
+        CASE WHEN l.summary_status = 'approved' THEN l.strengths_summary ELSE null END
+            AS strengths_summary,
+        CASE WHEN l.summary_status = 'approved' THEN l.weaknesses_summary ELSE null END
+            AS weaknesses_summary,
+        CASE WHEN l.summary_status = 'approved' THEN l.summary_evidence_note ELSE null END
+            AS summary_evidence_note,
+        CASE WHEN l.summary_status = 'approved' THEN l.summary_model ELSE null END
+            AS summary_model,
+        CASE WHEN l.summary_status = 'approved' THEN l.summary_prompt_version ELSE null END
+            AS summary_prompt_version,
+        CASE WHEN l.summary_status = 'approved' THEN l.summary_source_hash ELSE null END
+            AS summary_source_hash
     """
 
     rows = db.execute_read(
