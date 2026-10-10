@@ -70,12 +70,12 @@ function getPreviewAspects(breakdown, mode) {
   );
 
   if (mode === "custom" || mode === "guided") {
-    // A custom ranking may contain fewer than six selected aspects.
-    // Display the actual highest-weighted choices, even if evidence is missing.
+    // Weighted modes are explanatory breakdowns, not limited highlights.
+    // Show every selected, positively weighted aspect (including no-evidence
+    // rows), ordered by weight, so the displayed breakdown is complete.
     return [...available]
       .sort((a, b) => Number(b.normalized_weight) - Number(a.normalized_weight) ||
-        a.aspect_name.localeCompare(b.aspect_name))
-      .slice(0, 6);
+        a.aspect_name.localeCompare(b.aspect_name));
   }
 
   // Balanced rankings have equal weights. Show both higher- and lower-scoring
@@ -922,10 +922,13 @@ function App() {
               <div className="guided-refinement-head">
                 <div>
                   <h3>Stage 2 · Add more aspects</h3>
-                  <p>Add at least 1 new aspect (up to {aspects.length - guidedInitialIds.length} more), and adjust the relative importance of any selected aspect, including your Stage 1 selections. Only the same {guidedShortlist.candidateIds.length} shortlisted {guidedShortlist.candidateIds.length === 1 ? "laptop" : "laptops"} can be reranked.</p>
+                  <p>Add at least 1 new aspect (up to {aspects.length - guidedInitialIds.length} more). You can also readjust the weights of your Stage 1 aspects; the updated weights are normalized together.</p>
                 </div>
                 <span className="guided-selection-count">{guidedAdditionalIds.length} added · {guidedInitialIds.length + guidedAdditionalIds.length} total</span>
               </div>
+              <p className="guided-shortlist-explanation" role="note">
+                <strong>Stage 1 shortlist is locked:</strong> Stage 2 reranks only the {guidedShortlist.candidateIds.length} shortlisted {guidedShortlist.candidateIds.length === 1 ? "laptop" : "laptops"}, even if you change the weights of your original aspects. Laptops excluded in Stage 1 are not reconsidered. To search all eligible laptops again, edit your Stage 1 preferences or filters above and generate a new shortlist.
+              </p>
               <div className="guided-locked-aspects">
                 <strong>Stage 1 aspects (retained; weights editable):</strong>
                 {guidedInitialIds.map((id) => (
@@ -1246,13 +1249,17 @@ function RecommendationCard({
           </div>
         </div>
 
-        <div className="aspect-preview" aria-label="Selected aspect score highlights">
+        <div className="aspect-preview" aria-label={(resultsMode === "custom" || resultsMode === "guided")
+          ? "All selected weighted aspect scores"
+          : "Aspect score highlights"}>
           <div className="aspect-preview-heading">
             <div>
-              <strong>Aspect score highlights</strong>
+              <strong>{(resultsMode === "custom" || resultsMode === "guided")
+                ? "Selected aspect score breakdown"
+                : "Aspect score highlights"}</strong>
               <small>
                 {(resultsMode === "custom" || resultsMode === "guided")
-                  ? "Your selected preference aspects"
+                  ? "Every selected aspect, ordered by preference weight"
                   : "Higher and lower scores with review support"}
               </small>
             </div>

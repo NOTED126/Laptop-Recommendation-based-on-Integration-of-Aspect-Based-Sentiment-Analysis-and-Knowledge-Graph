@@ -1589,6 +1589,18 @@ footer p { max-width: 480px; margin: 0; text-align: right; }
   color: #64748b;
   font-size: .7rem;
 }
+/* Keep the shortlist limitation visible before editing Stage 2 weights. */
+.guided-shortlist-explanation {
+  margin: 0 0 1rem;
+  padding: .75rem .9rem;
+  border: 1px solid #cdd8f5;
+  border-radius: 10px;
+  background: #f1f5ff;
+  color: #344054;
+  font-size: .73rem;
+  line-height: 1.6;
+}
+.guided-shortlist-explanation strong { color: #2445a6; }
 @media (max-width: 1100px) {
   .guided-aspect-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
 }
