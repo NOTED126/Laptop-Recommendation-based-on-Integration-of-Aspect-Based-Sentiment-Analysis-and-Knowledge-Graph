@@ -1471,3 +1471,197 @@ footer p { max-width: 480px; margin: 0; text-align: right; }
   .laptop-summary-two-col { grid-template-columns: 1fr; }
   .laptop-experience-summary-head { flex-direction: column; }
 }
+
+/* Supervisor improvement 5: guided, two-stage preference refinement. */
+.mode-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.guided-initial,
+.guided-refinement {
+  padding: 1.1rem;
+  border: 1px solid #cbd7f5;
+  border-radius: 15px;
+  background: linear-gradient(140deg, #f8faff, #fff);
+}
+.guided-initial-head,
+.guided-refinement-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: .95rem;
+}
+.guided-initial-head h3,
+.guided-refinement-head h3 { margin: 0; font-size: 1rem; }
+.guided-initial-head p,
+.guided-refinement-head p,
+.guided-note {
+  margin: .3rem 0 0;
+  color: var(--muted);
+  font-size: .75rem;
+  line-height: 1.55;
+}
+.guided-selection-count {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: .35rem .7rem;
+  font-size: .72rem;
+  font-weight: 800;
+}
+.guided-aspect-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .55rem;
+}
+.guided-aspect-option {
+  min-height: 47px;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem .7rem;
+  text-align: left;
+  border: 1px solid #d9deea;
+  border-radius: 10px;
+  color: #344054;
+  background: white;
+  font-size: .76rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.guided-aspect-option.selected {
+  border-color: #8098ec;
+  background: #edf2ff;
+  color: #2445a6;
+  box-shadow: 0 0 0 1px #8098ec inset;
+}
+.guided-aspect-option:disabled:not(.selected) { opacity: .44; cursor: not-allowed; }
+.guided-aspect-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.guided-aspect-check {
+  display: grid;
+  flex: 0 0 21px;
+  place-items: center;
+  height: 21px;
+  border: 1px solid #ced6e7;
+  border-radius: 6px;
+  color: #64748b;
+  font-size: .85rem;
+}
+.guided-aspect-option.selected .guided-aspect-check {
+  color: white;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.guided-note { margin-top: .85rem; }
+.guided-shortlist-cap {
+  padding: .7rem;
+  color: #344054;
+  background: #eef2ff;
+  border: 1px solid #cdd8f5;
+  border-radius: 10px;
+  font-size: .76rem;
+  font-weight: 750;
+}
+.guided-refinement { margin-bottom: 1.1rem; }
+.guided-locked-aspects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  align-items: center;
+  margin-bottom: .8rem;
+  font-size: .72rem;
+}
+.guided-locked-aspects strong { margin-right: .3rem; }
+.guided-locked-aspects span {
+  padding: .34rem .55rem;
+  background: #e9f6ee;
+  color: var(--green);
+  border-radius: 999px;
+  font-weight: 700;
+}
+.guided-refinement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .7rem;
+  margin-top: .95rem;
+}
+.guided-candidate-lock {
+  color: #64748b;
+  font-size: .7rem;
+}
+@media (max-width: 1100px) {
+  .guided-aspect-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+@media (max-width: 780px) {
+  .mode-grid { grid-template-columns: 1fr; }
+  .guided-aspect-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 520px) {
+  .guided-initial-head, .guided-refinement-head { flex-direction: column; }
+  .guided-aspect-grid { grid-template-columns: 1fr; }
+  .guided-refinement-actions .primary, .guided-refinement-actions .secondary { width: 100%; }
+}
+
+
+/* Guided refinement: adjustable, auto-normalized weights and price ranges. */
+.price-range-filter {
+  grid-column: span 2;
+  min-width: 0;
+  margin: 0;
+  padding: .65rem .75rem .55rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #fbfcff;
+}
+.price-range-filter legend {
+  padding: 0 .3rem;
+  color: #344054;
+  font-size: .75rem;
+  font-weight: 800;
+}
+.price-range-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.price-range-inputs label { display: grid; gap: .35rem; color: #475467; font-size: .67rem; font-weight: 750; }
+.price-range-inputs input {
+  width: 100%; min-width: 0; min-height: 45px;
+  padding: 0 .7rem; border: 1px solid #d0d5dd;
+  border-radius: 9px; background: white; color: var(--ink);
+}
+.price-range-inputs input:focus { outline: 2px solid #8098ec; outline-offset: 1px; }
+.price-range-hint { margin: .5rem 0 0; color: var(--muted); font-size: .65rem; line-height: 1.5; }
+.guided-weight-controls {
+  margin-top: 1rem;
+  padding: .95rem;
+  border: 1px solid #dce3f0;
+  border-radius: 13px;
+  background: white;
+}
+.guided-weight-controls-head { display: flex; gap: .7rem; justify-content: space-between; align-items: start; margin-bottom: .65rem; }
+.guided-weight-controls-head strong { font-size: .79rem; }
+.guided-weight-controls-head span { color: var(--muted); font-size: .66rem; }
+.guided-weight-list { display: grid; gap: .35rem; }
+.guided-weight-row {
+  display: grid;
+  grid-template-columns: minmax(125px, 1.2fr) minmax(110px, 2fr) 70px 65px;
+  gap: .75rem;
+  align-items: center;
+  border-bottom: 1px solid #f0f2f7;
+  padding: .45rem .1rem;
+}
+.guided-weight-row:last-child { border-bottom: 0; }
+.guided-weight-name { font-size: .75rem; color: #344054; font-weight: 700; }
+.guided-weight-row input { width: 100%; min-width: 0; accent-color: var(--accent); cursor: pointer; }
+.guided-weight-raw, .guided-weight-normalized { font-size: .73rem; font-variant-numeric: tabular-nums; text-align: right; }
+.guided-weight-raw { color: var(--muted); }
+.guided-weight-normalized { color: var(--accent); }
+@media (max-width: 780px) {
+  .price-range-filter { grid-column: 1 / -1; }
+  .guided-weight-row { grid-template-columns: minmax(110px,1fr) minmax(90px,1.5fr) 65px 55px; gap: .35rem; }
+}
+@media (max-width: 540px) {
+  .guided-weight-controls-head { flex-direction: column; }
+  .guided-weight-row { grid-template-columns: minmax(0, 1fr) auto auto; gap: .5rem; }
+  .guided-weight-name { grid-column: 1; grid-row: 1; }
+  .guided-weight-raw { grid-column: 2; grid-row: 1; }
+  .guided-weight-normalized { grid-column: 3; grid-row: 1; }
+  .guided-weight-row input { grid-column: 1 / -1; grid-row: 2; }
+}

@@ -37,6 +37,12 @@ export const getRecommendations = (payload) =>
     body: JSON.stringify(payload),
   });
 
+export const refineRecommendations = (payload) =>
+  request("/api/recommendations/refine", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
 
 export const getAspectEvidence = (
   laptopId,

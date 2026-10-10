@@ -4,7 +4,7 @@ from typing import Dict, List
 from fastapi import HTTPException
 
 from .db import db
-from .models import RecommendationRequest
+from .models import RecommendationRequest, TwoStageRefinementRequest
 
 
 # Retain historical evidence in Neo4j, but do not use overlapping
@@ -228,14 +228,15 @@ def get_filter_options():
     return row
 
 
-def recommendation_query(filter_clauses):
-    where_text = ""
+def recommendation_query(filter_clauses, restrict_to_candidates=False):
+    clauses = list(filter_clauses)
+    if restrict_to_candidates:
+        # Query-level restriction: Stage 2 cannot introduce non-shortlisted laptops.
+        clauses.append("l.laptop_id IN $candidate_laptop_ids")
 
-    if filter_clauses:
-        where_text = (
-            "WHERE "
-            + "\nAND ".join(filter_clauses)
-        )
+    where_text = ""
+    if clauses:
+        where_text = "WHERE " + "\nAND ".join(clauses)
 
     return f"""
     MATCH (l:Laptop)
@@ -357,7 +358,7 @@ RETURN
 """
 
 
-def get_recommendations(request: RecommendationRequest):
+def get_recommendations(request: RecommendationRequest, candidate_laptop_ids=None):
     validate_aspect_ids(request.weights)
 
     weights = normalize_weights(request.weights)
@@ -368,9 +369,14 @@ def get_recommendations(request: RecommendationRequest):
 
     params["weights"] = weights
     params["top_n"] = request.top_n
+    if candidate_laptop_ids is not None:
+        # Never accept duplicates or an empty candidate pool.
+        if not candidate_laptop_ids or len(set(candidate_laptop_ids)) != len(candidate_laptop_ids):
+            raise HTTPException(status_code=422, detail="Invalid shortlist candidate IDs")
+        params["candidate_laptop_ids"] = candidate_laptop_ids
 
     ranking = db.execute_read(
-        recommendation_query(filter_clauses),
+        recommendation_query(filter_clauses, restrict_to_candidates=candidate_laptop_ids is not None),
         params,
     )
 
@@ -429,6 +435,46 @@ def get_recommendations(request: RecommendationRequest):
         "result_count": len(recommendations),
         "recommendations": recommendations,
     }
+
+
+def get_refined_recommendations(request: TwoStageRefinementRequest):
+    """Revalidate Stage 1 and rerank the exact frozen candidate set.
+
+    This remains a stateless workflow: the frontend keeps the shortlist, while
+    the backend recalculates its membership rather than trusting arbitrary IDs.
+    Ranking scores, support metrics, and breakdowns use the existing formula.
+    """
+    # Stage 1 weights are unchanged for verification; Stage 2 can change the
+    # relative importance of those aspects while adding new ones.
+    validate_aspect_ids(request.refined_weights)
+
+    stage_one = get_recommendations(RecommendationRequest(
+        filters=request.filters,
+        weights=request.initial_weights,
+        top_n=10,
+    ))
+    verified_ids = [row["laptop_id"] for row in stage_one["recommendations"]]
+    if verified_ids != request.candidate_laptop_ids:
+        raise HTTPException(
+            status_code=409,
+            detail="The Stage 1 shortlist has changed. Please generate a new shortlist before refining.",
+        )
+
+    refined = get_recommendations(
+        RecommendationRequest(
+            filters=request.filters,
+            weights=request.refined_weights,
+            top_n=len(verified_ids),
+        ),
+        candidate_laptop_ids=verified_ids,
+    )
+    refined_ids = [row["laptop_id"] for row in refined["recommendations"]]
+    if len(refined_ids) != len(verified_ids) or set(refined_ids) != set(verified_ids):
+        raise HTTPException(
+            status_code=409,
+            detail="The shortlisted laptops could not all be reranked. Please restart Stage 1.",
+        )
+    return refined
 
 
 def get_laptop_detail(laptop_id: str):

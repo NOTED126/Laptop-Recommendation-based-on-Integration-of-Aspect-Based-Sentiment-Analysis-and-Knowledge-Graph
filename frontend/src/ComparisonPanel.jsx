@@ -114,7 +114,7 @@ export default function ComparisonPanel({ items, resultsMode, onClose, onRemove 
       .sort((a, b) => a.aspect_name.localeCompare(b.aspect_name));
   }, [ready, snapshot]);
 
-  const canFilterWeighted = resultsMode === "custom" &&
+  const canFilterWeighted = (resultsMode === "custom" || resultsMode === "guided") &&
     weightedIDs.size > 0 && weightedIDs.size < aspectList.length;
   const shownAspects = onlyWeighted && canFilterWeighted
     ? aspectList.filter((aspect) => weightedIDs.has(aspect.aspect_id))
@@ -221,7 +221,7 @@ export default function ComparisonPanel({ items, resultsMode, onClose, onRemove 
               <div className="comparison-grid-row compare-aspect-row" key={aspect.aspect_id}>
                 <ComparisonCell first className="compare-aspect-label">
                   <strong>{aspect.aspect_name}</strong>
-                  {weightByAspect.has(aspect.aspect_id) && resultsMode === "custom" && (
+                  {weightByAspect.has(aspect.aspect_id) && (resultsMode === "custom" || resultsMode === "guided") && (
                     <span>Preference weight: {(weightByAspect.get(aspect.aspect_id) * 100).toFixed(2)}%</span>
                   )}
                 </ComparisonCell>
