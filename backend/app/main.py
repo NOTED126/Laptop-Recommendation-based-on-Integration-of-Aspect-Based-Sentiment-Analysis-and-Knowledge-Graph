@@ -12,6 +12,7 @@ from .models import (
     LaptopDetail,
     RecommendationRequest,
     RecommendationResponse,
+    TwoStageRefinementRequest,
 )
 from .services import (
     get_aspect_evidence,
@@ -19,6 +20,7 @@ from .services import (
     get_filter_options,
     get_laptop_detail,
     get_recommendations,
+    get_refined_recommendations,
 )
 
 
@@ -130,3 +132,12 @@ def aspect_evidence(
 )
 def recommendations(request: RecommendationRequest):
     return get_recommendations(request)
+
+
+@app.post(
+    "/api/recommendations/refine",
+    response_model=RecommendationResponse,
+)
+def recommendations_refine(request: TwoStageRefinementRequest):
+    """Rerank the verified Stage 1 shortlist with refined user weights."""
+    return get_refined_recommendations(request)

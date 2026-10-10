@@ -6,6 +6,7 @@ import {
   getHealth,
   getLaptop,
   getRecommendations,
+  refineRecommendations,
 } from "./api";
 import ComparisonPanel from "./ComparisonPanel";
 
@@ -22,6 +23,7 @@ const RETIRED_ASPECT_IDS = new Set(["FEATURE_SET"]);
 const EMPTY_FILTERS = {
   min_ram: "",
   min_storage: "",
+  min_price: "",
   max_price: "",
   brand: "",
   cpu_brand: "",
@@ -67,7 +69,7 @@ function getPreviewAspects(breakdown, mode) {
       Number(aspect.normalized_weight) > 0
   );
 
-  if (mode === "custom") {
+  if (mode === "custom" || mode === "guided") {
     // A custom ranking may contain fewer than six selected aspects.
     // Display the actual highest-weighted choices, even if evidence is missing.
     return [...available]
@@ -109,6 +111,14 @@ function App() {
   const [recommendationMode, setRecommendationMode] = useState("balanced");
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [topN, setTopN] = useState(5);
+  const [guidedInitialIds, setGuidedInitialIds] = useState([]);
+  const [guidedAdditionalIds, setGuidedAdditionalIds] = useState([]);
+  const [guidedInitialWeights, setGuidedInitialWeights] = useState({});
+  const [guidedRefinedWeights, setGuidedRefinedWeights] = useState({});
+  // Freeze the initial candidate IDs, original filter values, and original
+  // aspect weights. They are never recomputed from edited form values.
+  const [guidedShortlist, setGuidedShortlist] = useState(null);
+  const [guidedStage, setGuidedStage] = useState("initial");
 
   const [results, setResults] = useState([]);
   // Capture the mode that generated the displayed results. Changing the
@@ -154,9 +164,78 @@ function App() {
     [weights]
   );
 
+  function resetGuidedShortlist() {
+    setGuidedShortlist(null);
+    setGuidedAdditionalIds([]);
+    setGuidedRefinedWeights({});
+    setGuidedStage("initial");
+    setResults([]);
+    setHasSearched(false);
+    setCompareIds([]);
+    setCompareOpen(false);
+    setSelectedLaptop(null);
+  }
+
+  function selectRecommendationMode(mode) {
+    if (mode === recommendationMode) return;
+    setRecommendationMode(mode);
+    setError("");
+    resetGuidedShortlist();
+  }
+
+  function toggleGuidedInitial(aspectId) {
+    const wasSelected = guidedInitialIds.includes(aspectId);
+    if (!wasSelected && guidedInitialIds.length >= Math.max(0, aspects.length - 1)) return;
+    setGuidedInitialIds((current) => wasSelected
+      ? current.filter((id) => id !== aspectId) : [...current, aspectId]);
+    setGuidedInitialWeights((current) => {
+      const next = { ...current };
+      if (wasSelected) delete next[aspectId];
+      else next[aspectId] = 50;
+      return next;
+    });
+    if (guidedShortlist) resetGuidedShortlist();
+  }
+
+  function undoRefinedRanking() {
+    if (guidedStage === "refined" && guidedShortlist) {
+      setResults(guidedShortlist.recommendations);
+      setGuidedStage("shortlist");
+      setCompareIds([]);
+      setCompareOpen(false);
+      setSelectedLaptop(null);
+    }
+  }
+
+  function updateGuidedInitialWeight(aspectId, value) {
+    setGuidedInitialWeights((current) => ({ ...current, [aspectId]: Number(value) }));
+    // The original weights determine Stage 1 shortlist membership.
+    if (guidedShortlist) resetGuidedShortlist();
+  }
+
+  function toggleGuidedAdditional(aspectId) {
+    const wasSelected = guidedAdditionalIds.includes(aspectId);
+    if (!wasSelected && guidedAdditionalIds.length >= aspects.length - guidedInitialIds.length) return;
+    setGuidedAdditionalIds((current) => wasSelected
+      ? current.filter((id) => id !== aspectId) : [...current, aspectId]);
+    setGuidedRefinedWeights((current) => {
+      const next = { ...current };
+      if (wasSelected) delete next[aspectId];
+      else next[aspectId] = 50;
+      return next;
+    });
+    undoRefinedRanking();
+  }
+
+  function updateGuidedRefinedWeight(aspectId, value) {
+    setGuidedRefinedWeights((current) => ({ ...current, [aspectId]: Number(value) }));
+    undoRefinedRanking();
+  }
+
   function updateFilter(event) {
     const { name, value } = event.target;
     setFilters((current) => ({ ...current, [name]: value }));
+    if (recommendationMode === "guided" && guidedShortlist) resetGuidedShortlist();
   }
 
   function updateWeight(aspectId, value) {
@@ -186,12 +265,13 @@ function App() {
     .map((id) => results.find((item) => item.laptop_id === id))
     .filter(Boolean);
 
-  function buildPayload() {
+  function buildCleanFilters() {
     const cleanFilters = {};
 
     for (const key of [
       "min_ram",
       "min_storage",
+      "min_price",
       "max_price",
       "min_screen_size",
     ]) {
@@ -216,6 +296,11 @@ function App() {
       }
     }
 
+    return cleanFilters;
+  }
+
+  function buildPayload() {
+    const cleanFilters = buildCleanFilters();
     let cleanWeights = {};
 
     if (recommendationMode === "balanced") {
@@ -240,8 +325,18 @@ function App() {
   async function submit(event) {
     event.preventDefault();
 
+    if (filters.min_price !== "" && filters.max_price !== "" &&
+        Number(filters.min_price) > Number(filters.max_price)) {
+      setError("The minimum price cannot exceed the maximum price. Check your budget range.");
+      return;
+    }
+
     if (recommendationMode === "custom" && totalWeight <= 0) {
       setError("Set at least one aspect weight above zero in Custom mode.");
+      return;
+    }
+    if (recommendationMode === "guided" && guidedInitialIds.length < 1) {
+      setError("Select at least 1 experience aspect to create the initial shortlist.");
       return;
     }
 
@@ -249,7 +344,24 @@ function App() {
     setError("");
 
     try {
-      const response = await getRecommendations(buildPayload());
+      const stageOneFilters = buildCleanFilters();
+      const stageOneWeights = Object.fromEntries(
+        guidedInitialIds.map((id) => [id, guidedInitialWeights[id] ?? 50])
+      );
+      const response = await getRecommendations(recommendationMode === "guided"
+        ? { filters: stageOneFilters, weights: stageOneWeights, top_n: 10 }
+        : buildPayload());
+      if (recommendationMode === "guided") {
+        setGuidedShortlist(response.recommendations.length > 0 ? {
+          candidateIds: response.recommendations.map((item) => item.laptop_id),
+          recommendations: response.recommendations,
+          filters: stageOneFilters,
+          initialWeights: stageOneWeights,
+        } : null);
+        setGuidedAdditionalIds([]);
+        setGuidedRefinedWeights({ ...stageOneWeights });
+        setGuidedStage(response.recommendations.length > 0 ? "shortlist" : "initial");
+      }
       setResults(response.recommendations);
       setResultsMode(recommendationMode);
       setHasSearched(true);
@@ -268,6 +380,50 @@ function App() {
     } finally {
       setSearching(false);
     }
+  }
+
+  async function submitGuidedRefinement() {
+    if (!guidedShortlist || guidedAdditionalIds.length < 1) {
+      setError("Select at least 1 new aspect to refine your existing shortlist.");
+      return;
+    }
+    setSearching(true);
+    setError("");
+    try {
+      const response = await refineRecommendations({
+        filters: guidedShortlist.filters,
+        initial_weights: guidedShortlist.initialWeights,
+        refined_weights: Object.fromEntries(
+          [...guidedInitialIds, ...guidedAdditionalIds]
+            .map((id) => [id, guidedRefinedWeights[id] ?? 50])
+        ),
+        candidate_laptop_ids: guidedShortlist.candidateIds,
+      });
+      const returnedIds = response.recommendations.map((item) => item.laptop_id);
+      if (returnedIds.length !== guidedShortlist.candidateIds.length ||
+          !returnedIds.every((id) => guidedShortlist.candidateIds.includes(id))) {
+        throw new Error("The refined response did not preserve the original candidate set.");
+      }
+      setResults(response.recommendations);
+      setResultsMode("guided");
+      setGuidedStage("refined");
+      setCompareIds([]);
+      setCompareOpen(false);
+      setSelectedLaptop(null);
+    } catch (err) {
+      setError(`Refinement failed: ${err.message}`);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function restoreOriginalShortlist() {
+    if (!guidedShortlist) return;
+    setResults(guidedShortlist.recommendations);
+    setGuidedStage("shortlist");
+    setCompareIds([]);
+    setCompareOpen(false);
+    setSelectedLaptop(null);
   }
 
   async function showDetails(laptopId) {
@@ -375,7 +531,10 @@ function App() {
                 <button
                   type="button"
                   className="link-button"
-                  onClick={() => setFilters(EMPTY_FILTERS)}
+                  onClick={() => {
+                    setFilters(EMPTY_FILTERS);
+                    if (recommendationMode === "guided" && guidedShortlist) resetGuidedShortlist();
+                  }}
                 >
                   Clear filters
                 </button>
@@ -413,16 +572,29 @@ function App() {
                 </select>
               </Field>
 
-              <Field label="Maximum price (USD)">
-                <input
-                  name="max_price"
-                  type="number"
-                  min="0"
-                  value={filters.max_price}
-                  onChange={updateFilter}
-                  placeholder="No maximum"
-                />
-              </Field>
+              <fieldset className="price-range-filter">
+                <legend>Price range (USD)</legend>
+                <div className="price-range-inputs">
+                  <label>
+                    From (minimum)
+                    <input name="min_price" type="number" min="0" step="0.01"
+                      value={filters.min_price} onChange={updateFilter}
+                      placeholder="No minimum" />
+                  </label>
+                  <label>
+                    To (maximum)
+                    <input name="max_price" type="number" min="0" step="0.01"
+                      value={filters.max_price} onChange={updateFilter}
+                      placeholder="No maximum" />
+                  </label>
+                </div>
+                <p className="price-range-hint">
+                  {filterOptions?.min_price_usd != null && filterOptions?.max_price_usd != null
+                    ? `Laptop prices in this dataset range from ${money(filterOptions.min_price_usd)} to ${money(filterOptions.max_price_usd)}. `
+                    : "Set your preferred budget. "}
+                  Leave either box blank for no limit.
+                </p>
+              </fieldset>
 
               <Field label="Brand">
                 <select
@@ -514,7 +686,7 @@ function App() {
             <SectionHeader
               number="02"
               title="Experience preferences"
-              text="Choose Balanced for an equal-weight baseline, or Custom to tell the system which review-derived qualities matter more to you."
+              text="Choose Balanced, Custom weights, or Guided refinement to narrow an initial shortlist with additional preferences."
             />
 
             <div className="mode-grid">
@@ -523,10 +695,8 @@ function App() {
                 className={`mode-card ${
                   recommendationMode === "balanced" ? "selected" : ""
                 }`}
-                onClick={() => {
-                  setRecommendationMode("balanced");
-                  setError("");
-                }}
+                onClick={() => selectRecommendationMode("balanced")}
+                disabled={searching}
               >
                 <span className="mode-radio">
                   {recommendationMode === "balanced" ? "●" : "○"}
@@ -545,10 +715,8 @@ function App() {
                 className={`mode-card ${
                   recommendationMode === "custom" ? "selected" : ""
                 }`}
-                onClick={() => {
-                  setRecommendationMode("custom");
-                  setError("");
-                }}
+                onClick={() => selectRecommendationMode("custom")}
+                disabled={searching}
               >
                 <span className="mode-radio">
                   {recommendationMode === "custom" ? "●" : "○"}
@@ -561,9 +729,38 @@ function App() {
                   </p>
                 </div>
               </button>
+              <button
+                type="button"
+                className={`mode-card ${recommendationMode === "guided" ? "selected" : ""}`}
+                onClick={() => selectRecommendationMode("guided")}
+                disabled={searching}
+                aria-pressed={recommendationMode === "guided"}
+              >
+                <span className="mode-radio">{recommendationMode === "guided" ? "●" : "○"}</span>
+                <div>
+                  <strong>Guided two-stage refinement</strong>
+                  <p>Choose and weight your initial aspects, shortlist up to 10 eligible laptops, then refine the same candidates with updated weights and new aspects.</p>
+                </div>
+              </button>
             </div>
 
-            {recommendationMode === "balanced" ? (
+            {recommendationMode === "guided" ? (
+              <div className="guided-initial">
+                <div className="guided-initial-head">
+                  <div>
+                    <h3>Stage 1 · Choose your initial aspects</h3>
+                    <p>Select 1 or more aspects (up to {Math.max(0, aspects.length - 1)}) and adjust their importance. Raw weights are automatically normalized; hardware filters apply first. Leave at least one aspect for Stage 2.</p>
+                  </div>
+                  <span className="guided-selection-count">{guidedInitialIds.length} selected · min 1</span>
+                </div>
+                <GuidedAspectPicker aspects={aspects} selectedIds={guidedInitialIds}
+                  maxCount={Math.max(0, aspects.length - 1)} onToggle={toggleGuidedInitial} locked={searching} />
+                <GuidedWeightControls aspects={aspects} selectedIds={guidedInitialIds}
+                  values={guidedInitialWeights} onChange={updateGuidedInitialWeight}
+                  disabled={searching} title="Stage 1 aspect importance" />
+                <p className="guided-note">Generating a shortlist freezes these starting weights and candidates for verification. Changing the initial aspects, weights or hardware filters starts a new Stage 1 search.</p>
+              </div>
+            ) : recommendationMode === "balanced" ? (
               <div className="balanced-summary">
                 <div className="balanced-icon">=</div>
                 <div>
@@ -572,7 +769,7 @@ function App() {
                     Each of the {aspects.length} canonical aspects receives
                     approximately{" "}
                     {aspects.length > 0
-                      ? (100 / aspects.length).toFixed(2)
+                      ? (100 / aspects.length).toFixed(3)
                       : "0.00"}
                     % of the total recommendation weight.
                   </p>
@@ -669,32 +866,36 @@ function App() {
                 Filters are applied first. Eligible laptops are then ranked
                 using {recommendationMode === "balanced"
                   ? `equal weighting across all ${aspects.length} experience aspects`
-                  : "your custom experience weights"}.
+                  : recommendationMode === "guided"
+                    ? "your weighted initial aspects (top 10 eligible laptops), then your adjusted preferences for refinement"
+                    : "your custom experience weights"}.
               </p>
             </div>
 
             <div className="rank-actions">
-              <label>
-                Results
-                <select
-                  value={topN}
-                  onChange={(e) => setTopN(Number(e.target.value))}
-                >
-                  <option value="5">Top 5</option>
-                  <option value="10">Top 10</option>
-                  <option value="20">Top 20</option>
-                  <option value="30">All 30</option>
-                </select>
-              </label>
+              {recommendationMode === "guided" ? (
+                <div className="guided-shortlist-cap">Top 10 eligible laptops (or fewer if filtered)</div>
+              ) : (
+                <label>
+                  Results
+                  <select value={topN} onChange={(e) => setTopN(Number(e.target.value))}>
+                    <option value="5">Top 5</option>
+                    <option value="10">Top 10</option>
+                    <option value="20">Top 20</option>
+                    <option value="30">All 30</option>
+                  </select>
+                </label>
+              )}
 
               <button
                 className="primary"
                 disabled={
                   searching ||
-                  (recommendationMode === "custom" && totalWeight <= 0)
+                  (recommendationMode === "custom" && totalWeight <= 0) ||
+                  (recommendationMode === "guided" && guidedInitialIds.length < 1)
                 }
               >
-                {searching ? "Ranking laptops…" : "Find my laptops"}
+                {searching ? "Ranking laptops…" : recommendationMode === "guided" ? "Generate initial shortlist" : "Find my laptops"}
               </button>
             </div>
           </section>
@@ -703,8 +904,12 @@ function App() {
         <section id="results" className="results">
           <SectionHeader
             number="03"
-            title="Your recommendations"
-            text="Recommendation score and evidence support are shown separately."
+            title={resultsMode === "guided" && hasSearched
+              ? guidedStage === "refined" ? "Your refined shortlist" : "Your initial shortlist"
+              : "Your recommendations"}
+            text={resultsMode === "guided" && hasSearched
+              ? "These are the same shortlisted laptops; only their ranking and preference-dependent scores change in Stage 2."
+              : "Recommendation score and evidence support are shown separately."}
             action={
               hasSearched ? (
                 <span className="count">{results.length} results</span>
@@ -712,10 +917,47 @@ function App() {
             }
           />
 
+          {hasSearched && resultsMode === "guided" && guidedShortlist && (
+            <section className="guided-refinement" aria-label="Stage 2 preference refinement">
+              <div className="guided-refinement-head">
+                <div>
+                  <h3>Stage 2 · Add more aspects</h3>
+                  <p>Add at least 1 new aspect (up to {aspects.length - guidedInitialIds.length} more), and adjust the relative importance of any selected aspect, including your Stage 1 selections. Only the same {guidedShortlist.candidateIds.length} shortlisted {guidedShortlist.candidateIds.length === 1 ? "laptop" : "laptops"} can be reranked.</p>
+                </div>
+                <span className="guided-selection-count">{guidedAdditionalIds.length} added · {guidedInitialIds.length + guidedAdditionalIds.length} total</span>
+              </div>
+              <div className="guided-locked-aspects">
+                <strong>Stage 1 aspects (retained; weights editable):</strong>
+                {guidedInitialIds.map((id) => (
+                  <span key={id}>{aspects.find((a) => a.aspect_id === id)?.aspect_name || id}</span>
+                ))}
+              </div>
+              <GuidedAspectPicker aspects={aspects.filter((aspect) => !guidedInitialIds.includes(aspect.aspect_id))}
+                selectedIds={guidedAdditionalIds} maxCount={aspects.length - guidedInitialIds.length} onToggle={toggleGuidedAdditional} locked={searching} />
+              <GuidedWeightControls aspects={aspects} selectedIds={[...guidedInitialIds, ...guidedAdditionalIds]}
+                values={guidedRefinedWeights} onChange={updateGuidedRefinedWeight}
+                disabled={searching} title="Stage 2 refined importance (all selected aspects)" />
+              <div className="guided-refinement-actions">
+                <button type="button" className="primary" onClick={submitGuidedRefinement}
+                  disabled={searching || guidedAdditionalIds.length < 1}>
+                  {searching ? "Reranking shortlist…" : `Rerank shortlist (${guidedInitialIds.length + guidedAdditionalIds.length} aspects)`}
+                </button>
+                {guidedStage === "refined" && (
+                  <button type="button" className="secondary" onClick={restoreOriginalShortlist}>
+                    View original Stage 1 ranking
+                  </button>
+                )}
+                <span className="guided-candidate-lock">{guidedStage === "refined" ? "Refined ranking active" : "Initial ranking shown"} · Candidate set locked</span>
+              </div>
+            </section>
+          )}
+
           {!hasSearched ? (
             <Empty
               title="No ranking generated yet"
-              text="Choose your requirements and preferences, then click Find my laptops."
+              text={recommendationMode === "guided"
+                ? "Select at least 1 initial experience aspect and click Generate initial shortlist."
+                : "Choose your requirements and preferences, then click Find my laptops."}
             />
           ) : results.length === 0 ? (
             <Empty
@@ -863,6 +1105,55 @@ function Empty({ title, text }) {
   );
 }
 
+function GuidedWeightControls({ aspects, selectedIds, values, onChange, disabled = false, title }) {
+  if (!selectedIds.length) return null;
+  const total = selectedIds.reduce((sum, id) => sum + Number(values[id] ?? 50), 0);
+  return (
+    <div className="guided-weight-controls" aria-label={title}>
+      <div className="guided-weight-controls-head">
+        <strong>{title}</strong>
+        <span>Raw weights 1–100 · automatically normalized to 100%</span>
+      </div>
+      <div className="guided-weight-list">
+        {selectedIds.map((id) => {
+          const aspect = aspects.find((item) => item.aspect_id === id);
+          const value = Number(values[id] ?? 50);
+          const normalized = total > 0 ? (100 * value / total) : 0;
+          return (
+            <label className="guided-weight-row" key={id}>
+              <span className="guided-weight-name">{aspect?.aspect_name || id}</span>
+              <input type="range" min="1" max="100" step="1" value={value}
+                onChange={(event) => onChange(id, event.target.value)} disabled={disabled} />
+              <span className="guided-weight-raw">{value} / 100</span>
+              <strong className="guided-weight-normalized">{normalized.toFixed(1)}%</strong>
+            </label>
+          );
+        })}
+      </div>
+      <p className="guided-note">These percentages are relative preference weights, not review scores. Adjust any slider; the total is normalized automatically.</p>
+    </div>
+  );
+}
+
+function GuidedAspectPicker({ aspects, selectedIds, maxCount, onToggle, locked = false }) {
+  return (
+    <div className="guided-aspect-grid" role="group" aria-label="Experience aspect selection">
+      {aspects.map((aspect) => {
+        const selected = selectedIds.includes(aspect.aspect_id);
+        const disabled = !selected && selectedIds.length >= maxCount;
+        return (
+          <button type="button" key={aspect.aspect_id}
+            className={`guided-aspect-option ${selected ? "selected" : ""}`}
+            aria-pressed={selected} disabled={disabled || locked} onClick={() => onToggle(aspect.aspect_id)}>
+            <span className="guided-aspect-check" aria-hidden="true">{selected ? "✓" : "+"}</span>
+            <span>{aspect.aspect_name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function RecommendationCard({
   item, resultsMode, onDetails, detailLoading,
   isCompared, comparisonFull, onToggleCompare,
@@ -960,8 +1251,8 @@ function RecommendationCard({
             <div>
               <strong>Aspect score highlights</strong>
               <small>
-                {resultsMode === "custom"
-                  ? "Your most heavily weighted aspects"
+                {(resultsMode === "custom" || resultsMode === "guided")
+                  ? "Your selected preference aspects"
                   : "Higher and lower scores with review support"}
               </small>
             </div>
@@ -975,7 +1266,7 @@ function RecommendationCard({
           ) : (
             <div className="aspect-preview-list">
               <div className="aspect-preview-columns" aria-label="Aspect highlight column headings">
-                <span>{resultsMode === "custom" ? "Aspect / Weight" : "Aspect"}</span>
+                <span>{(resultsMode === "custom" || resultsMode === "guided") ? "Aspect / Weight" : "Aspect"}</span>
                 <span>Score bar</span>
                 <span>Score</span>
                 <span>Evidence</span>
@@ -992,7 +1283,7 @@ function RecommendationCard({
                   >
                     <div className="aspect-preview-name">
                       <strong>{aspect.aspect_name}</strong>
-                      {resultsMode === "custom" && (
+                      {(resultsMode === "custom" || resultsMode === "guided") && (
                         <small>{(aspect.normalized_weight * 100).toFixed(3)}% weight</small>
                       )}
                     </div>

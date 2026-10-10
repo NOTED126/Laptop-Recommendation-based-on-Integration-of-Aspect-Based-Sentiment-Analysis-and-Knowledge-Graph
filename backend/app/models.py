@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
+import math
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class RecommendationFilters(BaseModel):
@@ -20,6 +21,13 @@ class RecommendationFilters(BaseModel):
     cpu_contains: Optional[str] = None
     gpu_brand: Optional[str] = None
     gpu_contains: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_price_range(self):
+        if (self.min_price is not None and self.max_price is not None
+                and self.min_price > self.max_price):
+            raise ValueError("Minimum price must not exceed maximum price")
+        return self
 
 
 class RecommendationRequest(BaseModel):
@@ -61,6 +69,57 @@ class RecommendationRequest(BaseModel):
             )
 
         return cleaned
+
+
+class TwoStageRefinementRequest(BaseModel):
+    """Verify a Stage-1 shortlist, then rerank only its members.
+
+    The client supplies a frozen Stage-1 snapshot. The server independently
+    recomputes it using the original filters and initial preferences.
+    """
+
+    filters: RecommendationFilters = Field(default_factory=RecommendationFilters)
+    # Original Stage 1 weights are frozen for server-side shortlist verification.
+    initial_weights: Dict[str, float]
+    # Stage 2 includes ALL Stage 1 aspects (weights may change) AND at least
+    # one newly selected aspect. The backend uses these weights for reranking.
+    refined_weights: Dict[str, float]
+    candidate_laptop_ids: List[str] = Field(..., min_length=1, max_length=10)
+
+    @field_validator("initial_weights", "refined_weights")
+    @classmethod
+    def validate_stage_weights(cls, weights, info):
+        if not weights:
+            raise ValueError(f"{info.field_name} must contain at least one aspect")
+        clean = {}
+        for raw_id, value in weights.items():
+            aspect_id = raw_id.strip().upper()
+            if not aspect_id or aspect_id in clean:
+                raise ValueError("Preference aspect IDs must be distinct and non-empty")
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError("All guided preference weights must be positive and finite")
+            clean[aspect_id] = float(value)
+        return clean
+
+    @field_validator("candidate_laptop_ids")
+    @classmethod
+    def validate_candidates(cls, ids):
+        if any(not name or not name.strip() for name in ids):
+            raise ValueError("Candidate laptop IDs cannot be blank")
+        if len(ids) != len(set(ids)):
+            raise ValueError("Candidate laptop IDs cannot be duplicated")
+        return ids
+
+    @model_validator(mode="after")
+    def ensure_refinement_extends_initial_preferences(self):
+        initial = set(self.initial_weights)
+        refined = set(self.refined_weights)
+        missing = initial - refined
+        if missing:
+            raise ValueError(f"Stage 2 must retain every Stage 1 aspect: {sorted(missing)}")
+        if not refined - initial:
+            raise ValueError("Stage 2 must add at least one new aspect")
+        return self
 
 
 class AspectBreakdown(BaseModel):
