@@ -7,6 +7,11 @@ from .db import db
 from .models import RecommendationRequest
 
 
+# Retain historical evidence in Neo4j, but do not use overlapping
+# umbrella aspects as user-selectable recommendation preferences.
+RETIRED_RECOMMENDATION_ASPECT_IDS = frozenset({"FEATURE_SET"})
+
+
 def normalize_weights(weights: Dict[str, float]) -> List[dict]:
     total = sum(weights.values())
 
@@ -121,6 +126,7 @@ def build_filter_clause(filters):
 def get_aspects():
     query = """
     MATCH (a:Aspect)
+    WHERE NOT (a.aspect_id IN $retired_aspect_ids)
     RETURN
         a.aspect_id AS aspect_id,
         a.aspect_name AS aspect_name,
@@ -132,7 +138,10 @@ def get_aspects():
     ORDER BY a.aspect_name
     """
 
-    return db.execute_read(query)
+    return db.execute_read(
+        query,
+        {"retired_aspect_ids": sorted(RETIRED_RECOMMENDATION_ASPECT_IDS)},
+    )
 
 
 def get_valid_aspect_ids():
@@ -154,7 +163,7 @@ def validate_aspect_ids(weights):
         raise HTTPException(
             status_code=400,
             detail={
-                "message": "Unknown canonical aspect ID(s).",
+                "message": "Unknown or retired recommendation aspect ID(s).",
                 "invalid_aspects": invalid,
                 "valid_aspects": sorted(valid),
             },
@@ -462,7 +471,23 @@ def get_laptop_detail(laptop_id: str):
         l.battery_life_hours AS battery_life_hours,
 
         l.image_url AS image_url,
-        l.product_url AS product_url
+        l.product_url AS product_url,
+
+        // Only approved offline summaries are visible to website visitors.
+        CASE WHEN l.summary_status = 'approved' THEN l.overall_summary ELSE null END
+            AS overall_summary,
+        CASE WHEN l.summary_status = 'approved' THEN l.strengths_summary ELSE null END
+            AS strengths_summary,
+        CASE WHEN l.summary_status = 'approved' THEN l.weaknesses_summary ELSE null END
+            AS weaknesses_summary,
+        CASE WHEN l.summary_status = 'approved' THEN l.summary_evidence_note ELSE null END
+            AS summary_evidence_note,
+        CASE WHEN l.summary_status = 'approved' THEN l.summary_model ELSE null END
+            AS summary_model,
+        CASE WHEN l.summary_status = 'approved' THEN l.summary_prompt_version ELSE null END
+            AS summary_prompt_version,
+        CASE WHEN l.summary_status = 'approved' THEN l.summary_source_hash ELSE null END
+            AS summary_source_hash
     """
 
     rows = db.execute_read(
