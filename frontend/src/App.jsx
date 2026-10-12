@@ -9,6 +9,7 @@ import {
   refineRecommendations,
 } from "./api";
 import ComparisonPanel from "./ComparisonPanel";
+import { splitExperienceSummary } from "./summaryFormatting";
 
 const DEFAULT_WEIGHTS = {
   BATTERY_LIFE: 50,
@@ -132,6 +133,9 @@ function App() {
 
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [searchPhase, setSearchPhase] = useState("initial");
+  const [searchSlow, setSearchSlow] = useState(false);
+  const [initialConnectionSlow, setInitialConnectionSlow] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -147,6 +151,21 @@ function App() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  // Pending is the only trustworthy progress signal without a streaming API.
+  // After 10 seconds, explain that a cloud service may be waking from idle.
+  useEffect(() => {
+    setSearchSlow(false);
+    if (!searching) return;
+    const timer = setTimeout(() => setSearchSlow(true), 10000);
+    return () => clearTimeout(timer);
+  }, [searching]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => setInitialConnectionSlow(true), 10000);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   const totalWeight = useMemo(
     () =>
@@ -340,6 +359,7 @@ function App() {
       return;
     }
 
+    setSearchPhase("initial");
     setSearching(true);
     setError("");
 
@@ -387,6 +407,7 @@ function App() {
       setError("Select at least 1 new aspect to refine your existing shortlist.");
       return;
     }
+    setSearchPhase("refined");
     setSearching(true);
     setError("");
     try {
@@ -444,6 +465,7 @@ function App() {
       <div className="loading">
         <div className="spinner" />
         <p>Connecting to FastAPI and AuraDB…</p>
+        {initialConnectionSlow && <p className="loading-slow-note">The recommendation server may be waking after inactivity. Please wait; if this does not finish, refresh to retry.</p>}
       </div>
     );
   }
@@ -898,6 +920,7 @@ function App() {
                 {searching ? "Ranking laptops…" : recommendationMode === "guided" ? "Generate initial shortlist" : "Find my laptops"}
               </button>
             </div>
+            {searching && searchPhase === "initial" && <RequestProgress slow={searchSlow} guided={recommendationMode === "guided"} />}
           </section>
         </form>
 
@@ -952,6 +975,7 @@ function App() {
                 )}
                 <span className="guided-candidate-lock">{guidedStage === "refined" ? "Refined ranking active" : "Initial ranking shown"} · Candidate set locked</span>
               </div>
+              {searching && searchPhase === "refined" && <RequestProgress slow={searchSlow} guided refinement />}
             </section>
           )}
 
@@ -1053,6 +1077,19 @@ function App() {
       )}
     </>
   );
+}
+
+function RequestProgress({ slow, guided = false, refinement = false }) {
+  return <div className="request-progress" role="status" aria-live="polite" aria-label="Recommendation request in progress">
+    <div className="request-progress-text">
+      <strong>{refinement ? "Reranking your shortlist…" : guided ? "Generating your initial shortlist…" : "Finding your laptops…"}</strong>
+      <span>{slow
+        ? "This is taking longer than usual. The cloud server may be waking up after inactivity, or the connection may be slow."
+        : "Request in progress. Retrieving and ranking laptops using your current preferences."}</span>
+    </div>
+    <div className="request-progress-track" aria-hidden="true"><span /></div>
+    <small>Progress is indeterminate; no completion percentage is estimated.</small>
+  </div>;
 }
 
 function Method({ n, title, children }) {
@@ -1357,6 +1394,16 @@ function RecommendationCard({
 }
 
 
+// The approved review summary is rendered as safe text fragments, not HTML.
+// Emphasized phrases remain character-for-character identical to the database.
+function ExperienceSummaryText({ text, fallback }) {
+  return <>{splitExperienceSummary(text || fallback).map((part, index) =>
+    part.tone
+      ? <strong key={index} className={`laptop-summary-keyword laptop-summary-keyword-${part.tone}`}>{part.text}</strong>
+      : <span key={index}>{part.text}</span>
+  )}</>;
+}
+
 function LaptopModal({ laptop, onClose }) {
   // Keep all 23 selectable aspects in both the chart and detailed table.
   // Rows without mentions display N/A and cannot request source reviews.
@@ -1501,7 +1548,7 @@ function LaptopModal({ laptop, onClose }) {
           />
         </div>
 
-        {laptop.overall_summary && (
+        {(laptop.strengths_summary || laptop.weaknesses_summary) && (
           <section className="laptop-experience-summary" aria-label="AI-assisted laptop experience summary">
             <div className="laptop-experience-summary-head">
               <div>
@@ -1510,18 +1557,14 @@ function LaptopModal({ laptop, onClose }) {
               </div>
               <span className="laptop-experience-summary-tag">Offline · Reviewed</span>
             </div>
-            <div className="laptop-summary-overall">
-              <strong>Overall assessment</strong>
-              <p>{laptop.overall_summary}</p>
-            </div>
             <div className="laptop-summary-two-col">
               <div className="laptop-summary-strength">
                 <strong>Supported strengths</strong>
-                <p>{laptop.strengths_summary || "No clearly supported strengths identified."}</p>
+                <p><ExperienceSummaryText text={laptop.strengths_summary} fallback="No clearly supported strengths identified." /></p>
               </div>
               <div className="laptop-summary-weakness">
                 <strong>Potential weaknesses</strong>
-                <p>{laptop.weaknesses_summary || "No clearly supported weaknesses identified."}</p>
+                <p><ExperienceSummaryText text={laptop.weaknesses_summary} fallback="No clearly supported weaknesses identified." /></p>
               </div>
             </div>
             {laptop.summary_evidence_note && (

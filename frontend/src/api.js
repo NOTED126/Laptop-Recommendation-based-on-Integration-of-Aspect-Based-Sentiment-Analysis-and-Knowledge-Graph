@@ -2,13 +2,27 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  const { timeoutMs = 0, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(fetchOptions.headers || {}),
+      },
+      ...fetchOptions,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("The recommendation request timed out. The server may be unavailable; please try again.");
+    }
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;
@@ -33,12 +47,14 @@ export const getLaptop = (id) =>
 
 export const getRecommendations = (payload) =>
   request("/api/recommendations", {
+    timeoutMs: 150000, // Allow Render cold starts without waiting indefinitely.
     method: "POST",
     body: JSON.stringify(payload),
   });
 
 export const refineRecommendations = (payload) =>
   request("/api/recommendations/refine", {
+    timeoutMs: 150000,
     method: "POST",
     body: JSON.stringify(payload),
   });
