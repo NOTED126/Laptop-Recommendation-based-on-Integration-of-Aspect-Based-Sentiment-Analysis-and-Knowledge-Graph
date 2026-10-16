@@ -1,21 +1,72 @@
-# Python virtual environment
+# Python local environments, caches, and IDE files
 .venv/
-
-# Python cache
+venv/
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
 
-# Secrets
+# Environment variables and secrets. Keep only the documented templates.
 .env
-backend/.env
+.env.*
+!**/.env.example
+!frontend/.env.production
+**/.env.local
+**/.env.*.local
 
-# Frontend dependencies/build output
+# Frontend dependencies and compiled output
 frontend/node_modules/
 frontend/dist/
 
-# IDE/editor
-.vscode/
+# Downloaded model exports and trainer checkpoints
+/aspect_extraction/*
+!/aspect_extraction/.gitkeep
+/aspect_sentiment/*
+!/aspect_sentiment/.gitkeep
 
-# OS files
-.DS_Store
-Thumbs.db
+# Downloaded SemEval files and processed training dataset
+/SemEval_2014_dataset/*
+!/SemEval_2014_dataset/.gitkeep
+
+# Third-party scraped source datasets
+/reviews/*
+!/reviews/.gitkeep
+/specifications/*
+!/specifications/.gitkeep
+
+# Derived outputs: these can be rebuilt when all inputs are available
+/pipeline_output/*
+!/pipeline_output/.gitkeep
+/pipeline_output_v3/*
+!/pipeline_output_v3/.gitkeep
+/recommendation_scores/*
+!/recommendation_scores/.gitkeep
+/knowledge_graph/data/*
+!/knowledge_graph/data/.gitkeep
+/knowledge_graph/review_evidence/*
+!/knowledge_graph/review_evidence/.gitkeep
+/knowledge_graph/generated_summaries/*
+!/knowledge_graph/generated_summaries/.gitkeep
+
+# Research history, large training logs and exploratory outputs
+/correction_work/
+/recovery/
+/exploratory_test_output/
+/recommendation_query_output/
+/wandb/
+
+# Local archives and environment exports (never publish accidental uploads)
+/Program_python_packages*.txt
+/archive.zip
+/Thesis code*.zip
+/Thesis_Stage*.zip
+/aspect_extraction.zip
+/aspect_sentiment.zip
+
+# Additional local test/build caches
+.coverage
+htmlcov/
+.ruff_cache/

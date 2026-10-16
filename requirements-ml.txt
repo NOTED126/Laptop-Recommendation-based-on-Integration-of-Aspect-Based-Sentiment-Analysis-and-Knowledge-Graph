@@ -1,0 +1,21 @@
+# Offline ATE/ABSA, scraping, ontology and graph research environment.
+# Target Python: 3.11 (author's environment: 3.11.0).
+# These are direct dependencies with versions from the author's 2026-10-16
+# pip freeze. NOT a complete environment lockfile or clean-install validation.
+#
+# IMPORTANT: Install PyTorch separately FIRST, selecting your operating system
+# and CPU/CUDA build at https://pytorch.org/get-started/locally/ .
+# The author's CUDA installation was torch==2.11.0+cu130; that build is
+# hardware-specific and intentionally not forced here.
+# See docs/ENVIRONMENT_SETUP.md before installing this file.
+
+numpy==2.4.6
+pandas==3.0.6
+scikit-learn==1.9.1
+matplotlib==3.11.2
+selenium==4.51.0
+transformers==5.19.0
+neo4j==6.3.1
+python-dotenv==1.2.3
+tabulate==0.10.0
+pytest==9.1.1
