@@ -1,146 +1,51 @@
-# Frontend — Laptop Recommendation Thesis
+# React/Vite Frontend
 
-React + Vite frontend for the FastAPI + Neo4j AuraDB system.
+User interface for the **[Evidence-Aware Laptop Recommendation System](../README.md)**. It calls the Neo4j-backed FastAPI backend; the browser does **not** connect directly to Neo4j and never handles database credentials.
 
-## What it does
+## Current features
 
-- Reads canonical aspects from `GET /api/aspects`
-- Reads available filter values from `GET /api/filters`
-- Sends hard filters + user aspect weights to `POST /api/recommendations`
-- Displays recommendation score separately from evidence confidence
-- Displays per-aspect evidence levels
-- Shows laptop images from `image_url`
-- Provides clickable product links from `product_url`
-- Loads detailed specifications and aspect evidence from `GET /api/laptops/{id}`
-- Supports Top 5, Top 10, Top 20, or all 30 laptops
+- **Balanced:** equal weights across the 23 selectable experience aspects.
+- **Custom Preferences:** user-selected aspects and weights.
+- **Guided Two-Stage Refinement:** verified initial shortlist of up to 10 laptops, with the second stage reranking only its original members after adding preferences.
+- Hardware filters, ranked results, image/product links, aspect evidence information, and evidence-supported strengths/weaknesses summaries.
+- Two-/three-laptop comparison with specification extremes, coverage highlighting, sorted aspect scores, and top/bottom sentiment radar charts.
+- Inline evidence details with source review snippets; missing direct aspect evidence appears as N/A.
+- Client-only highlighting of key phrases in previously approved summaries; no online AI generation.
 
-## First-time setup
+## Run locally
 
-Make sure Node.js is installed:
+The backend requires an **already populated Neo4j database**. Run from the repository root in the first PowerShell terminal:
 
 ```powershell
-node --version
-npm --version
-```
-
-Keep FastAPI running in one PowerShell window:
-
-```powershell
-cd "C:\Users\USER\Desktop\Program"
+python -m pip install -r backend/requirements.txt
+Copy-Item backend/.env.example backend/.env
+# Enter your own Neo4j credentials in backend/.env.
 uvicorn backend.app.main:app --reload
 ```
 
-Open a second PowerShell window:
+In another terminal:
 
 ```powershell
-cd "C:\Users\USER\Desktop\Program\frontend"
-npm install
-```
-
-Copy:
-
-```text
-frontend/.env.example
-```
-
-to:
-
-```text
-frontend/.env
-```
-
-For local development it should contain:
-
-```env
-VITE_API_BASE_URL=http://127.0.0.1:8000
-```
-
-This frontend environment value is not secret. AuraDB credentials remain only
-inside `backend/.env`.
-
-Start the frontend:
-
-```powershell
+cd frontend
+npm ci
+Copy-Item .env.example .env.local
+# For local development, VITE_API_BASE_URL=http://127.0.0.1:8000
 npm run dev
 ```
 
-Then open:
+Open http://localhost:5173. Do not place secrets in `VITE_` variables; those values are visible in bundled browser code.
 
-```text
-http://localhost:5173
-```
-
-## Normal startup after setup
-
-### PowerShell 1 — backend
+## Build and regression tests
 
 ```powershell
-cd "C:\Users\USER\Desktop\Program"
-uvicorn backend.app.main:app --reload
-```
-
-### PowerShell 2 — frontend
-
-```powershell
-cd "C:\Users\USER\Desktop\Program\frontend"
-npm run dev
-```
-
-Open:
-
-```text
-http://localhost:5173
-```
-
-## Images and product links
-
-The FastAPI recommendation response already returns:
-
-```json
-{
-  "image_url": "https://...",
-  "product_url": "https://..."
-}
-```
-
-The UI renders the image on each recommendation card and provides a
-"View product" link that opens the original product page in a new tab.
-
-Some retailer/CDN image hosts can block third-party embedding. If a particular
-image cannot be displayed, the UI shows a placeholder while the product link
-still works.
-
-## Production later
-
-When you eventually deploy:
-
-1. Deploy FastAPI to a cloud host.
-2. Add the deployed frontend origin to backend `CORS_ORIGINS`.
-3. Change `VITE_API_BASE_URL` to the deployed FastAPI URL.
-4. Run:
-
-```powershell
+cd frontend
+node test_display_all.mjs
+node test_supervisor_comparison.mjs
+node test_supervisor_four_refinements.mjs
+node test_summary_coverage.mjs
 npm run build
 ```
 
-Vite outputs production files to:
+The production output is written to `frontend/dist/` and is not committed to Git. Production uses the `VITE_API_BASE_URL` set at build time (`frontend/.env.production` currently contains the deployed API endpoint). Set the Render frontend service's root directory to `frontend` and publish directory to `dist` if deploying as a Static Site.
 
-```text
-frontend/dist/
-```
-
-
-## Recommendation modes
-
-The frontend now offers two ranking modes:
-
-- **Balanced mode (default):** all canonical experience aspects are passed to
-  the backend with equal weight. The user can rank laptops without touching
-  any preference sliders.
-- **Custom preferences:** the user chooses active aspects and weights manually.
-  A Battery Life 50 / Performance 30 / Thermal Performance 20 preset is
-  available as an optional example only.
-
-The backend still performs exactly the same evidence-aware scoring. Balanced
-mode simply sends equal raw weights for every aspect; the backend normalizes
-them automatically.
+See the [root README](../README.md) and [environment guide](../docs/ENVIRONMENT_SETUP.md) for ML data dependencies and full deployment context.

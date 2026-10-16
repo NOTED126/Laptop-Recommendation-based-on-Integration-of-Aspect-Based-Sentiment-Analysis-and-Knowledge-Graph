@@ -13,6 +13,13 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 DATA = ROOT / "recommendation_scores/laptop_aspect_scores.csv"
 
+# Source-only checkout: the validated score CSV is distributed separately.
+# When that CSV is restored, all original evidence-based tests run normally.
+pytestmark = pytest.mark.skipif(
+    not DATA.is_file(),
+    reason="Requires finalized recommendation_scores/laptop_aspect_scores.csv (excluded from source-only ZIP)",
+)
+
 
 def packets():
     return module.read_and_prepare(DATA)
