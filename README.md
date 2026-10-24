@@ -20,6 +20,7 @@ Rather than assigning every laptop a single generic review rating, the system es
 - [Technology stack](#technology-stack)
 - [Repository structure](#repository-structure)
 - [Quick start: website](#quick-start-website)
+- [Data collection: Best Buy web scraping](#data-collection-best-buy-web-scraping)
 - [Datasets, models, and offline pipeline](#datasets-models-and-offline-pipeline)
 - [Testing and research scope](#testing-and-research-scope)
 - [Data availability and limitations](#data-availability-and-limitations)
@@ -190,6 +191,21 @@ Open `http://localhost:5173`. For a production build, run `npm run build` from `
 | `POST` | `/api/recommendations` | Weighted ranking with hard specification filters |
 | `POST` | `/api/recommendations/refine` | Verified two-stage shortlist refinement |
 
+## Data collection: Best Buy web scraping
+
+The repository includes the original Selenium-based scripts used to collect Best Buy laptop customer reviews and product specifications. **The validated 30-laptop research dataset is not included** in this source-only release. Running the scrapers now may produce different results—or fail—if Best Buy's URLs, page structure, or available data have changed.
+
+**Before running:** use Python 3.11 with `selenium` and `pandas`, Mozilla Firefox, and a compatible GeckoDriver. Both scripts contain Windows-specific default paths for Firefox and GeckoDriver inside their scraper class constructors; update those paths for your machine. Verify configured product URLs and comply with the website's applicable access requirements.
+
+| Script | Product configuration | Command (from repository root) | Output |
+|---|---|---|---|
+| `review_scraping.py` | `PRODUCT_DICT` (`brand`, `model`, `URL`, optional `URL_pages`) | `python review_scraping.py` | One CSV per product in `reviews/`; maximum 200 reviews per laptop, subject to availability |
+| `specification_scraping.py` | `LAPTOPS_TO_SCRAPE` (`brand`, `model`, `name`, `URL`) | `python specification_scraping.py` | One CSV per product in `specifications/`, containing price, image URL, and selected hardware specifications |
+
+**These commands process every product configured in their respective scripts.** Page-specific selectors and URLs may need maintenance; no guarantee is made that today's output reproduces the original research records. The corrected final thesis datasets and correction audit remain privately archived.
+
+See [Data collection instructions](docs/DATA_COLLECTION.md) for exact configuration fields, CSV column names, prerequisites, limitations, and verification guidance.
+
 ## Datasets, models, and offline pipeline
 
 ### 1. SemEval-2014 training data
@@ -277,7 +293,7 @@ node test_summary_coverage.mjs
 npm run build
 ```
 
-The Stage 4 package passed the Python and Node-based regression suites; a fresh `npm ci` and full Vite production build were **not rerun here**. Some summary tests are deliberately skipped when `recommendation_scores/laptop_aspect_scores.csv` is absent. Tests that need Neo4j, model weights, source data, or a deployed service cannot be exercised from a source-only clone. See [Stage 3 verification](docs/STAGE3_VERIFICATION.md) and the [publication checklist](docs/README_PUBLICATION_CHECKLIST.md) for the exact scope.
+During release integration, the Python regression suite reported 32 passed and 33 skipped, the Node frontend regression suites passed, and `npm ci` plus `npm run build` succeeded in the Windows working environment. Some summary tests are deliberately skipped when `recommendation_scores/laptop_aspect_scores.csv` is absent. Tests that need Neo4j, model weights, source data, or a deployed service cannot be exercised from a source-only clone. For supported development commands and prerequisites, see [Environment setup](docs/ENVIRONMENT_SETUP.md).
 
 **Dataset and graph size in the validated private research artifacts:** 30 laptops; 6,000 review nodes; 24 stored aspect nodes; 720 laptop–aspect score relationships. The corrected final data and its audit record are held privately, not in this repository.
 
@@ -294,4 +310,4 @@ The validated final dataset and historical correction/audit materials are retain
 
 ---
 
-**Academic project:** Undergraduate thesis implementation. The repository is being prepared for university code submission and a future public portfolio. **Screenshots, model downloads, an explicit repository license, and final publication checks remain pending.**
+**Academic project:** This public repository presents the source code and documentation for an undergraduate Final Year Project on explainable laptop recommendations. The complete original research datasets are not distributed here. **Application screenshots, external model download links, and an explicit repository license remain pending.**
