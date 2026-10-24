@@ -150,6 +150,8 @@ Before considering any collected CSV suitable for analysis:
 4. Check specification headers and missing values before using files in downstream graph preparation.
 5. Keep raw exports and validation records private unless sharing is authorized by the data provider's terms.
 
+**Website Structure and Selector Compatibility:** Both scraping scripts rely on predefined CSS selectors and XPath expressions to locate specific elements on Best Buy's website, including customer reviews, product prices, images, and specification details. Since the website's HTML structure may change over time, users should inspect the current page structure using browser developer tools and update the corresponding selectors in `review_scraping.py` and `specification_scraping.py` when necessary. Users should also verify that the updated selectors extract the intended information accurately and comply with the website's applicable access requirements.
+
 **Known historical correction:** During the thesis, incorrect duplicate ASUS ROG Flow Z13 review data were discovered under the ASUS ROG Strix G16 record. The final research dataset was corrected and validated. That corrected source data and the provenance/audit materials are retained in a separate private archive; they are not reproduced by a fresh scraper run.
 
 ## 5. Where these files enter the offline research pipeline
