@@ -20,7 +20,7 @@ graph without changing the recommendation score.
 The uploaded data contains:
 
 - 6,000 original reviews across 30 laptop CSV files
-- 18,992 canonical review-aspect records
+- 15,943 canonical review-aspect records
 - 5,198 reviews with at least one canonical experience-aspect record
 
 Every canonical review-aspect record joins to its original review using:
@@ -83,7 +83,7 @@ Expected major counts:
 ```text
 Review nodes             6000
 HAS_REVIEW               6000
-MENTIONS                 18992
+MENTIONS                 15943
 ```
 
 ## Important
