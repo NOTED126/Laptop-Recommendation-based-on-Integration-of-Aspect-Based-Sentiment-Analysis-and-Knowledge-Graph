@@ -10,7 +10,9 @@ Rather than assigning every laptop a single generic review rating, the system es
 
 > **Live demo:** [Open the deployed laptop recommendation website](https://laptop-recommendation-frontend.onrender.com). The deployed frontend requires a compatible populated Neo4j database.
 > **Trained ATE/ABSA models:** *Google Drive download links to be added.* Each planned ZIP contains its respective `best_model/` export only.
-> **Screenshots:** *To be added after selecting final application screenshots.*
+> **Screenshots:**
+> <img width="1882" height="1032" alt="image" src="https://github.com/user-attachments/assets/9b0ca67c-d22a-4073-89fe-e48fa5b44bae" />
+> <img width="1246" height="965" alt="image" src="https://github.com/user-attachments/assets/e62c3dc8-5867-4103-9de2-6546046c9953" />
 
 ## Contents
 
@@ -310,4 +312,4 @@ The validated final dataset and historical correction/audit materials are retain
 
 ---
 
-**Academic project:** This public repository presents the source code and documentation for an undergraduate Final Year Project on explainable laptop recommendations. The complete original research datasets are not distributed here. **Application screenshots, external model download links, and an explicit repository license remain pending.**
+**Academic project:** This public repository presents the source code and documentation for an undergraduate Final Year Project on explainable laptop recommendations. The complete original research datasets are not distributed here. **explicit repository license remain pending.**
