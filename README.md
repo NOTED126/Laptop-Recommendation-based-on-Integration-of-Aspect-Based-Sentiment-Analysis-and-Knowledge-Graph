@@ -240,8 +240,8 @@ The planned separately hosted archives are:
 
 | Google Drive archive | Extracted path | Download |
 |---|---|---|
-| `aspect_extraction.zip` | `aspect_extraction/best_model/` | *Link pending* |
-| `aspect_sentiment.zip` | `aspect_sentiment/best_model/` | *Link pending* |
+| `aspect_extraction.zip` | `aspect_extraction/best_model/` | [Aspect extraction best model](https://drive.google.com/drive/folders/1INEYwpwrYqCw5ks8sDdhQP5tYZE7KnJ-?usp=sharing) |
+| `aspect_sentiment.zip` | `aspect_sentiment/best_model/` | [Aspect sentiment best model](https://drive.google.com/drive/folders/1nGYaOyhrtXZxJSndjqfF2s4Cf5Py8nCp?usp=sharing) |
 
 Extract the actual `best_model/` folder under each parent; do **not** create an accidental nested `aspect_extraction/aspect_extraction/` path. Intermediate `checkpoint-*` folders are unnecessary for final inference. Once the training CSV exists, optional retraining entry points are `python ATE_train_model.py` and `python ABSA_train_model.py`; GPU resources and additional compatible Hugging Face training dependencies may be required.
 
