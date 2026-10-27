@@ -44,7 +44,11 @@ The comparison radar charts visualize **review-derived sentiment**, not measured
 
 ## Architecture and data flow
 
-The NLP extraction, ontology mapping, and evidence-aware scoring happen **offline**. The deployed backend queries precomputed graph relationships and recalculates user-specific weighted rankings; it does **not** load DistilBERT for each website request.
+The NLP extraction, canonical aspect categorization and normalization, and evidence-aware scoring happen **offline**. The deployed backend queries precomputed graph relationships and recalculates user-specific weighted rankings; it does **not** load DistilBERT for each website request.
+
+See [Canonical aspect categorization and normalization](docs/CANONICAL_ASPECT_MAPPING.md)
+for the mapping interface, `mapping_status` CSV schema, category tables, and
+updated pipeline commands.
 
 ```mermaid
 flowchart TD
@@ -53,7 +57,7 @@ flowchart TD
     R[Best Buy customer review CSVs] --> I[Offline ATE and ABSA inference]
     T --> I
     I --> RAW[Raw aspect predictions<br/>pipeline_output]
-    RAW --> O[Ontology v3 reaggregation<br/>pipeline_output_v3]
+    RAW --> O[Canonical aspect v3 reaggregation<br/>pipeline_output_v3]
     O --> SC[Evidence-aware aspect scoring<br/>recommendation_scores]
     SP[Best Buy specification CSVs] --> KG[Knowledge graph CSV preparation]
     SC --> KG
@@ -107,7 +111,7 @@ Guided Stage 2 retains the original Stage 1 aspects, adds at least one new prefe
 |---|---|
 | Data preparation, scraping and analysis | Python 3.11, Pandas, NumPy, Selenium, scikit-learn, Matplotlib |
 | ATE / ABSA | PyTorch, Hugging Face Transformers, DistilBERT |
-| Ontology and scoring | Python, canonical aspect mapping, evidence-adjusted sentiment aggregation |
+| Canonical aspect mapping and scoring | Python, canonical aspect mapping, evidence-adjusted sentiment aggregation |
 | Knowledge graph | Neo4j / AuraDB, Cypher, Neo4j Python driver |
 | API | FastAPI, Pydantic, Uvicorn |
 | Website | React, Vite, JavaScript, CSS |
@@ -130,7 +134,7 @@ Guided Stage 2 retains the original Stage 1 aspects, adds at least one new prefe
 ├── reviews/                        # Placeholder: original laptop review CSVs
 ├── specifications/                # Placeholder: original laptop specification CSVs
 ├── pipeline_output/               # Raw ATE/ABSA predictions
-├── pipeline_output_v3/            # Final ontology-normalized outputs
+├── pipeline_output_v3/            # Final canonical aspect normalized outputs
 ├── recommendation_scores/         # Final evidence-adjusted aspect scores
 ├── tests/                         # Python regression tests
 ├── docs/                          # Environment, data and verification documentation
@@ -138,8 +142,8 @@ Guided Stage 2 retains the original Stage 1 aspects, adds at least one new prefe
 ├── ATE_train_model.py             # ATE model training/evaluation
 ├── ABSA_train_model.py            # ABSA model training/evaluation
 ├── ATE_ABSA_Pipeline.py           # Offline inference on laptop reviews
-├── aspect_ontology.py             # Canonical aspect mapping
-├── reaggregate_ontology_v3.py     # Final ontology reaggregation
+├── canonical_aspect_mapping.py             # Canonical aspect mapping
+├── reaggregate_canonical_aspects_v3.py     # Final canonical aspect reaggregation
 ├── recommendation_scoring.py      # Global priors, adjustment and confidence
 ├── prepare_kg_data.py            # Neo4j-ready CSV generation
 ├── requirements-ml.txt            # Offline Python direct dependencies
@@ -247,17 +251,17 @@ The planned separately hosted archives are:
 
 Extract the actual `best_model/` folder under each parent; do **not** create an accidental nested `aspect_extraction/aspect_extraction/` path. Intermediate `checkpoint-*` folders are unnecessary for final inference. Once the training CSV exists, optional retraining entry points are `python ATE_train_model.py` and `python ABSA_train_model.py`; GPU resources and additional compatible Hugging Face training dependencies may be required.
 
-### 3. Regenerate prediction, ontology and scoring artifacts
+### 3. Regenerate prediction, canonical aspect mapping and scoring artifacts
 
 **Requires:** the full original 30-laptop review CSVs under `reviews/` and both final trained models above. These full review files are **not** distributed in this repository.
 
 ```powershell
 python ATE_ABSA_Pipeline.py --reviews-dir reviews --output-dir pipeline_output
-python reaggregate_ontology_v3.py --raw pipeline_output/raw_aspect_predictions.csv --output-dir pipeline_output_v3
+python reaggregate_canonical_aspects_v3.py --raw pipeline_output/raw_aspect_predictions.csv --output-dir pipeline_output_v3
 python recommendation_scoring.py
 ```
 
-`pipeline_output/` is the raw-inference output location. `reaggregate_ontology_v3.py` does **not** infer the input path: its `--raw` option is mandatory. The script writes the final ontology aggregations to `pipeline_output_v3/`, and `recommendation_scoring.py` reads its experience summary by default.
+`pipeline_output/` is the raw-inference output location. `reaggregate_canonical_aspects_v3.py` does **not** infer the input path: its `--raw` option is mandatory. The script writes the final canonical aspect aggregations to `pipeline_output_v3/`, and `recommendation_scoring.py` reads its experience summary by default.
 
 ### 4. Prepare and populate Neo4j
 
@@ -270,7 +274,7 @@ python knowledge_graph/scripts/create_neo4j_graph.py
 
 The first command prepares graph-import CSVs. The second **writes to the configured database**; verify `backend/.env` and your target instance **before running it**, and use a test database for reproduction. Avoid `--clear-existing` unless you intend to erase all existing graph data.
 
-To add review provenance, which requires the original review CSVs and ontology output:
+To add review provenance, which requires the original review CSVs and canonical aspect output:
 
 ```powershell
 python knowledge_graph/scripts/prepare_review_evidence.py

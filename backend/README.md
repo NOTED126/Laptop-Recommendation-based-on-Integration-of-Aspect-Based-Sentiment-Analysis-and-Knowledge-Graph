@@ -2,7 +2,7 @@
 
 The API serving the **[Evidence-Aware Laptop Recommendation System](../README.md)**. It connects to a **previously populated Neo4j/AuraDB** instance, applies hard specification filters, performs weighted recommendation ranking from precomputed `HAS_ASPECT_SCORE` relationships, and retrieves supporting review evidence.
 
-> DistilBERT inference, ontology aggregation, and aspect-score preparation happen offline, **not** inside API requests.
+> DistilBERT inference, canonical aspect aggregation, and aspect-score preparation happen offline, **not** inside API requests.
 
 ## Local setup (PowerShell)
 

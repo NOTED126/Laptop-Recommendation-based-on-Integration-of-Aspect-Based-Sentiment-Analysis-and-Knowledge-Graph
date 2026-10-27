@@ -159,7 +159,7 @@ Before considering any collected CSV suitable for analysis:
 ```text
 review_scraping.py  -> reviews/*.csv
                       -> ATE_ABSA_Pipeline.py (offline inference)
-                      -> ontology v3 reaggregation / evidence preparation
+                      -> canonical aspect mapping v3 reaggregation / evidence preparation
 
 specification_scraping.py -> specifications/*.csv
                            -> prepare_kg_data.py (graph-ready records)

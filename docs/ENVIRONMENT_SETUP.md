@@ -2,7 +2,7 @@
 
 This project has **three distinct execution contexts**:
 
-1. The offline Python research scripts: SemEval preprocessing, DistilBERT ATE/ABSA training and inference, ontology, scoring, scraping, and graph generation.
+1. The offline Python research scripts: SemEval preprocessing, DistilBERT ATE/ABSA training and inference, canonical aspect mapping, scoring, scraping, and graph generation.
 2. The FastAPI backend: Neo4j-backed API, deployed separately on Render.
 3. The React/Vite frontend: built with npm and deployed separately on Render.
 
@@ -98,7 +98,7 @@ aspect_sentiment/best_model/
 
 ```powershell
 python ATE_ABSA_Pipeline.py --reviews-dir reviews --output-dir pipeline_output
-python reaggregate_ontology_v3.py --raw pipeline_output/raw_aspect_predictions.csv --output-dir pipeline_output_v3
+python reaggregate_canonical_aspects_v3.py --raw pipeline_output/raw_aspect_predictions.csv --output-dir pipeline_output_v3
 python recommendation_scoring.py
 ```
 

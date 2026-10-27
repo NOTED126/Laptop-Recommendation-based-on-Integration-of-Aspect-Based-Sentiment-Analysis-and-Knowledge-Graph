@@ -9,6 +9,24 @@ uploaded project. No original customer review text or product data is included.
 Review Count,Brand,Model,Product,Date,Review
 ```
 
+## Raw aspect prediction CSV
+
+```csv
+review_id,sentence_id,window_id,context,aspect,aspect_key,sentiment,mapping_status,canonical_aspect,canonical_label,aspect_type,mapping_method,mapping_reason,laptop,source_file
+```
+
+`mapping_status` is `mapped`, `unmapped`, or `rejected`. The same column is used
+in the raw pipeline outputs, v3 outputs, and correction-work prediction copies.
+
+## Canonical aspect category CSV
+
+```csv
+canonical_aspect,canonical_label,aspect_type,description
+```
+
+See [Canonical aspect categorization and normalization](CANONICAL_ASPECT_MAPPING.md)
+for Python interfaces, output filenames, and commands.
+
 ## Specifications CSV
 
 ```text
