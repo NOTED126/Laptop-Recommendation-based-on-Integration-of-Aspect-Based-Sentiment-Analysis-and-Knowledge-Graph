@@ -14,7 +14,7 @@ from transformers import (
 
 from ATE_train_model import extract_aspects
 from ABSA_train_model import predict_aspect_sentiment
-from aspect_ontology import classify_aspect, ontology_table
+from canonical_aspect_mapping import classify_aspect, canonical_aspect_table
 
 
 ATE_MODEL_PATH = "aspect_extraction/best_model"
@@ -216,7 +216,7 @@ def normalize_aspect_text(aspect):
     Apply only surface-form normalization.
 
     Semantic mappings such as 'screen' -> 'display' or 'thermals' -> 'cooling'
-    should be added later in a dedicated laptop-aspect ontology after inspecting
+    should be added later in a dedicated canonical laptop aspect categorization and normalization scheme after inspecting
     the real extraction output.
     """
     aspect = clean_review_text(aspect).casefold()
@@ -265,7 +265,7 @@ def process_review(
                 continue
             overlap_dedup.add(dedup_key)
 
-            ontology = classify_aspect(aspect, segment["text"])
+            mapping_decision = classify_aspect(aspect, segment["text"])
 
             rows.append(
                 {
@@ -276,12 +276,12 @@ def process_review(
                     "aspect": aspect,
                     "aspect_key": aspect_key,
                     "sentiment": sentiment,
-                    "ontology_status": ontology.ontology_status,
-                    "canonical_aspect": ontology.canonical_aspect,
-                    "canonical_label": ontology.canonical_label,
-                    "aspect_type": ontology.aspect_type,
-                    "mapping_method": ontology.mapping_method,
-                    "mapping_reason": ontology.mapping_reason,
+                    "mapping_status": mapping_decision.mapping_status,
+                    "canonical_aspect": mapping_decision.canonical_aspect,
+                    "canonical_label": mapping_decision.canonical_label,
+                    "aspect_type": mapping_decision.aspect_type,
+                    "mapping_method": mapping_decision.mapping_method,
+                    "mapping_reason": mapping_decision.mapping_reason,
                 }
             )
 
@@ -340,7 +340,7 @@ def collapse_to_canonical_review_level(raw_predictions):
     This is different from ``collapse_to_review_level``: synonyms such as
     ``screen`` and ``display`` are merged into one ``DISPLAY_QUALITY`` opinion.
     Rejected and unmapped ATE terms are deliberately excluded from canonical
-    aggregation but remain available in the raw output for ontology refinement.
+    aggregation but remain available in the raw output for canonical aspect mapping refinement.
     """
     if isinstance(raw_predictions, pd.DataFrame):
         rows_in = raw_predictions.to_dict("records")
@@ -349,7 +349,7 @@ def collapse_to_canonical_review_level(raw_predictions):
 
     mapped = [
         row for row in rows_in
-        if row.get("ontology_status") == "mapped" and row.get("canonical_aspect")
+        if row.get("mapping_status") == "mapped" and row.get("canonical_aspect")
     ]
     if not mapped:
         return pd.DataFrame(
@@ -470,18 +470,18 @@ def aggregate_canonical_laptop_aspects(canonical_review_df, aspect_type="experie
     ).reset_index(drop=True)
 
 
-def summarize_ontology_exceptions(raw_df, status="unmapped"):
-    """Summarize unmapped or rejected ATE outputs for iterative ontology review."""
+def summarize_mapping_exceptions(raw_df, status="unmapped"):
+    """Summarize unmapped or rejected ATE outputs for iterative canonical aspect mapping review."""
     columns = [
         "aspect_key", "example_forms", "raw_mentions", "reviews_mentioning",
         "laptops_mentioning", "positive_mentions", "negative_mentions",
         "neutral_mentions", "mapping_methods", "mapping_reasons",
     ]
 
-    if raw_df is None or raw_df.empty or "ontology_status" not in raw_df.columns:
+    if raw_df is None or raw_df.empty or "mapping_status" not in raw_df.columns:
         return pd.DataFrame(columns=columns)
 
-    working = raw_df[raw_df["ontology_status"] == status]
+    working = raw_df[raw_df["mapping_status"] == status]
     if working.empty:
         return pd.DataFrame(columns=columns)
 
@@ -664,7 +664,7 @@ def process_review_directory(
     overlap_tokens=DEFAULT_OVERLAP_TOKENS,
 ):
     """
-    Process every review CSV and save both raw and ontology-normalized outputs.
+    Process every review CSV and save both raw and canonical aspect normalized outputs.
 
     The raw files preserve model traceability. Canonical files are the intended
     inputs for the later Neo4j/recommendation stages.
@@ -714,9 +714,9 @@ def process_review_directory(
     specification_summary = aggregate_canonical_laptop_aspects(
         canonical_review_output, aspect_type="specification"
     )
-    unmapped_output = summarize_ontology_exceptions(raw_output, status="unmapped")
-    rejected_output = summarize_ontology_exceptions(raw_output, status="rejected")
-    ontology_df = pd.DataFrame(ontology_table())
+    unmapped_output = summarize_mapping_exceptions(raw_output, status="unmapped")
+    rejected_output = summarize_mapping_exceptions(raw_output, status="rejected")
+    canonical_aspects_df = pd.DataFrame(canonical_aspect_table())
 
     raw_path = output_dir / "raw_aspect_predictions.csv"
     raw_review_path = output_dir / "raw_review_level_aspects.csv"
@@ -725,7 +725,7 @@ def process_review_directory(
     spec_path = output_dir / "laptop_specification_review_mentions.csv"
     unmapped_path = output_dir / "unmapped_aspects.csv"
     rejected_path = output_dir / "rejected_aspects.csv"
-    ontology_path = output_dir / "canonical_aspect_ontology.csv"
+    canonical_aspects_path = output_dir / "canonical_aspect_categories.csv"
 
     raw_output.to_csv(raw_path, index=False)
     raw_review_output.to_csv(raw_review_path, index=False)
@@ -734,9 +734,9 @@ def process_review_directory(
     specification_summary.to_csv(spec_path, index=False)
     unmapped_output.to_csv(unmapped_path, index=False)
     rejected_output.to_csv(rejected_path, index=False)
-    ontology_df.to_csv(ontology_path, index=False)
+    canonical_aspects_df.to_csv(canonical_aspects_path, index=False)
 
-    print("\nFinished processing all review files with ontology normalization.")
+    print("\nFinished processing all review files with canonical aspect categorization and normalization.")
     print(f"Raw predictions:                {raw_path}")
     print(f"Raw review-level aspects:       {raw_review_path}")
     print(f"Canonical review-level aspects: {canonical_review_path}")
@@ -744,13 +744,13 @@ def process_review_directory(
     print(f"Specification mentions:         {spec_path}")
     print(f"Unmapped aspect report:         {unmapped_path}")
     print(f"Rejected aspect report:         {rejected_path}")
-    print(f"Ontology definition:            {ontology_path}")
+    print(f"Canonical aspect categories:            {canonical_aspects_path}")
 
     if not raw_output.empty:
-        status_counts = raw_output["ontology_status"].value_counts()
+        status_counts = raw_output["mapping_status"].value_counts()
         total = len(raw_output)
         mapped = int(status_counts.get("mapped", 0))
-        print("\nOntology coverage:")
+        print("\nCanonical aspect mapping coverage:")
         print(f"  mapped:   {mapped}/{total} ({mapped / total:.1%})")
         print(f"  unmapped: {int(status_counts.get('unmapped', 0))}/{total}")
         print(f"  rejected: {int(status_counts.get('rejected', 0))}/{total}")
@@ -801,8 +801,8 @@ def run_demo(
             for idx, row in enumerate(predictions, start=1):
                 mapping = (
                     row["canonical_label"]
-                    if row.get("ontology_status") == "mapped"
-                    else row.get("ontology_status", "unmapped").upper()
+                    if row.get("mapping_status") == "mapped"
+                    else row.get("mapping_status", "unmapped").upper()
                 )
                 print(
                     f"   - ASPECT {idx}: {row['aspect'].ljust(18)} "

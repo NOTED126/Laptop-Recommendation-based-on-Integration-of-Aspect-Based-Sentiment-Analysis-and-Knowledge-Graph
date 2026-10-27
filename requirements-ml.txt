@@ -1,4 +1,4 @@
-# Offline ATE/ABSA, scraping, ontology and graph research environment.
+# Offline ATE/ABSA, scraping, canonical aspect mapping and graph research environment.
 # Target Python: 3.11 (author's environment: 3.11.0).
 # These are direct dependencies with versions from the author's 2026-10-16
 # pip freeze. NOT a complete environment lockfile or clean-install validation.

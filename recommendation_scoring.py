@@ -1,7 +1,7 @@
 """
 Evidence-aware recommendation scoring for the laptop recommendation thesis.
 
-This script consumes the FINAL ontology-v3 laptop-level experience summary and
+This script consumes the FINAL canonical aspect v3 laptop-level experience summary and
 creates reusable aspect scores for recommendation and Neo4j import.
 
 Default input
@@ -636,7 +636,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_INPUT,
         help=(
-            "Ontology-v3 laptop experience summary CSV "
+            "Canonical aspect v3 laptop experience summary CSV "
             f"(default: {DEFAULT_INPUT})."
         ),
     )

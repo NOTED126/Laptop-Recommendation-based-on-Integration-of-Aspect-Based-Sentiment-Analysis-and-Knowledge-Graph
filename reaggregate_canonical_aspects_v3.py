@@ -1,11 +1,11 @@
-"""Reclassify saved ATE+ABSA raw predictions with ontology v3.
+"""Reclassify saved ATE+ABSA raw predictions with canonical aspect mapping v3.
 
 This script does NOT rerun DistilBERT. It reuses raw_aspect_predictions.csv,
-updates ontology decisions, then regenerates canonical review- and laptop-level
+updates canonical aspect mapping decisions, then regenerates canonical review- and laptop-level
 CSV outputs.
 
 Example:
-    python reaggregate_ontology_v3.py \
+    python reaggregate_canonical_aspects_v3.py \
         --raw "pipeline_output/raw_aspect_predictions.csv" \
         --output-dir "pipeline_output_v3"
 """
@@ -17,11 +17,11 @@ import csv
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from aspect_ontology import classify_aspect, ontology_table
+from canonical_aspect_mapping import classify_aspect, canonical_aspect_table
 
 
-RAW_ONTOLOGY_COLUMNS = [
-    "ontology_status",
+RAW_MAPPING_COLUMNS = [
+    "mapping_status",
     "canonical_aspect",
     "canonical_label",
     "aspect_type",
@@ -50,7 +50,7 @@ def reclassify_rows(rows):
         decision = classify_aspect(row.get("aspect", ""), row.get("context", ""))
         new_row.update(
             {
-                "ontology_status": decision.ontology_status,
+                "mapping_status": decision.mapping_status,
                 "canonical_aspect": decision.canonical_aspect,
                 "canonical_label": decision.canonical_label,
                 "aspect_type": decision.aspect_type,
@@ -68,7 +68,7 @@ def collapse_to_canonical_review_level(rows):
     metadata = {}
 
     for row in rows:
-        if row.get("ontology_status") != "mapped" or not row.get("canonical_aspect"):
+        if row.get("mapping_status") != "mapped" or not row.get("canonical_aspect"):
             continue
         key = (
             row.get("laptop", ""),
@@ -168,7 +168,7 @@ def aggregate_laptop(canonical_review_rows, aspect_type):
 def summarize_exceptions(rows, status):
     grouped = defaultdict(list)
     for row in rows:
-        if row.get("ontology_status") == status:
+        if row.get("mapping_status") == status:
             grouped[row.get("aspect_key", "")].append(row)
 
     output = []
@@ -229,7 +229,7 @@ def canonical_coverage(canonical_review_rows):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Reaggregate saved raw predictions with ontology v3 without rerunning ATE/ABSA.")
+    parser = argparse.ArgumentParser(description="Reaggregate saved raw predictions with canonical aspect mapping v3 without rerunning ATE/ABSA.")
     parser.add_argument("--raw", required=True, help="Path to raw_aspect_predictions.csv")
     parser.add_argument("--output-dir", default="pipeline_output_v3", help="Output directory")
     args = parser.parse_args()
@@ -249,10 +249,10 @@ def main():
     unmapped = summarize_exceptions(reclassified, "unmapped")
     rejected = summarize_exceptions(reclassified, "rejected")
     coverage = canonical_coverage(canonical_review)
-    ontology_rows = ontology_table()
+    canonical_aspect_rows = canonical_aspect_table()
 
     raw_fields = list(rows[0].keys())
-    for col in RAW_ONTOLOGY_COLUMNS:
+    for col in RAW_MAPPING_COLUMNS:
         if col not in raw_fields:
             raw_fields.append(col)
 
@@ -281,22 +281,22 @@ def main():
         ["canonical_aspect", "canonical_label", "laptops_mentioning", "reviews_mentioning", "positive_reviews", "negative_reviews", "neutral_reviews", "mixed_reviews", "positive_ratio"],
     )
     write_csv(
-        output_dir / "canonical_aspect_ontology_v3.csv",
-        ontology_rows,
+        output_dir / "canonical_aspect_categories_v3.csv",
+        canonical_aspect_rows,
         ["canonical_aspect", "canonical_label", "aspect_type", "description"],
     )
 
-    old_counts = Counter(row.get("ontology_status", "") for row in rows)
-    new_counts = Counter(row.get("ontology_status", "") for row in reclassified)
+    old_counts = Counter(row.get("mapping_status", "") for row in rows)
+    new_counts = Counter(row.get("mapping_status", "") for row in reclassified)
     total = len(reclassified)
 
-    print("\nOntology v3 reaggregation complete")
+    print("\nCanonical aspect v3 reaggregation complete")
     print(f"Raw predictions: {total:,}")
-    print("\nPrevious ontology status:")
+    print("\nPrevious mapping status:")
     for status in ("mapped", "rejected", "unmapped"):
         count = old_counts.get(status, 0)
         print(f"  {status:8s}: {count:6,d} ({count / total:6.2%})")
-    print("\nOntology v3 status:")
+    print("\nCanonical aspect mapping v3 status:")
     for status in ("mapped", "rejected", "unmapped"):
         count = new_counts.get(status, 0)
         print(f"  {status:8s}: {count:6,d} ({count / total:6.2%})")

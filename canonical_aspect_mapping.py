@@ -1,12 +1,12 @@
 """
-Laptop aspect ontology (version 3) for the thesis recommendation system.
+Canonical aspect categorization and normalization (version 3) for the thesis recommendation system.
 
 Purpose
 -------
 The ATE model produces open-ended surface forms such as:
     "battery", "battery life", "screen", "display", "fan noise", ...
 
-This module converts those surface forms into a controlled laptop ontology while
+This module converts those surface forms into predefined canonical laptop aspect categories while
 remaining conservative:
 
 1. Known laptop-experience terms are mapped to canonical user-experience aspects.
@@ -15,7 +15,7 @@ remaining conservative:
 3. Clearly irrelevant/generic/noisy extractions are rejected.
 4. Unknown terms remain UNMAPPED instead of being guessed.
 
-Version 3 refines the ontology using the complete Best Buy corpus after the
+Version 3 refines the canonical aspect mapping using the complete Best Buy corpus after the
 full ATE+ABSA inference run. It targets recurring high-confidence variants found
 across the 30-laptop corpus, adds upgradeability and NPU hardware concepts, and
 keeps context-sensitive or rare long-tail terms conservative.
@@ -179,7 +179,7 @@ CANONICAL_ASPECTS: Dict[str, Dict[str, str]] = {
 # Surface normalization
 # -----------------------------------------------------------------------------
 def normalize_surface(text: object) -> str:
-    """Normalize an extracted surface form for ontology lookup."""
+    """Normalize an extracted surface form for canonical aspect lookup."""
     if text is None:
         return ""
 
@@ -394,7 +394,7 @@ REGEX_RULES = [
 class AspectDecision:
     raw_aspect: str
     aspect_key: str
-    ontology_status: str
+    mapping_status: str
     canonical_aspect: str
     canonical_label: str
     aspect_type: str
@@ -417,7 +417,7 @@ def _mapped_decision(
     return AspectDecision(
         raw_aspect=raw_aspect,
         aspect_key=aspect_key,
-        ontology_status="mapped",
+        mapping_status="mapped",
         canonical_aspect=canonical_aspect,
         canonical_label=metadata["label"],
         aspect_type=aspect_type,
@@ -431,7 +431,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
     Classify one extracted aspect.
 
     Unknown terms are intentionally returned as ``unmapped`` rather than guessed.
-    That makes ontology coverage measurable and lets the mapping evolve safely.
+    That makes canonical aspect mapping coverage measurable and lets the mapping evolve safely.
     """
     raw_aspect = "" if aspect is None else str(aspect)
     aspect_key = normalize_surface(raw_aspect)
@@ -441,7 +441,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
         return AspectDecision(
             raw_aspect=raw_aspect,
             aspect_key=aspect_key,
-            ontology_status="rejected",
+            mapping_status="rejected",
             canonical_aspect="",
             canonical_label="",
             aspect_type="rejected",
@@ -454,7 +454,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
         return AspectDecision(
             raw_aspect=raw_aspect,
             aspect_key=aspect_key,
-            ontology_status="rejected",
+            mapping_status="rejected",
             canonical_aspect="",
             canonical_label="",
             aspect_type="rejected",
@@ -588,7 +588,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
         canonical, aspect_type = ALIAS_LOOKUP[aspect_key]
         return _mapped_decision(
             raw_aspect, aspect_key, canonical, aspect_type, "exact_alias",
-            f"matched ontology alias '{aspect_key}'",
+            f"matched canonical aspect alias '{aspect_key}'",
         )
 
     # Probable ATE fragments/noise. Numeric-only strings are also discarded.
@@ -613,17 +613,17 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
     return AspectDecision(
         raw_aspect=raw_aspect,
         aspect_key=aspect_key,
-        ontology_status="unmapped",
+        mapping_status="unmapped",
         canonical_aspect="",
         canonical_label="",
         aspect_type="unmapped",
         mapping_method="unmapped",
-        mapping_reason="no conservative ontology rule matched",
+        mapping_reason="no conservative canonical aspect mapping rule matched",
     )
 
 
-def ontology_table():
-    """Return canonical ontology metadata as a list of dictionaries."""
+def canonical_aspect_table():
+    """Return canonical aspect category metadata as a list of dictionaries."""
     rows = []
     for canonical, metadata in CANONICAL_ASPECTS.items():
         rows.append(
@@ -975,7 +975,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
     if aspect_key == "support":
         if re.search(r"\b(driver|software|app|apps|compatib|amd|intel|windows|linux|pytorch|game)\b", context_key):
             return _v3_mapped(raw_aspect, aspect_key, "SOFTWARE_EXPERIENCE", "experience", "support refers to software/platform compatibility")
-        return _v3_rejected(raw_aspect, aspect_key, "customer/vendor support is outside laptop-quality ontology")
+        return _v3_rejected(raw_aspect, aspect_key, "customer/vendor support is outside laptop-quality aspect categories")
 
     if aspect_key == "slot":
         if re.search(r"\b(m\.?2|nvme|ssd|ram|memory|second|extra|upgrade)\b", context_key):
@@ -1187,7 +1187,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
     if aspect_key == "security":
         if re.search(r"\b(fingerprint|face|facial|windows hello|biometric)\b", context_key):
             return _v3_mapped(raw_aspect, aspect_key, "BIOMETRIC_SECURITY", "experience", "security refers to biometric login")
-        return _v3_rejected(raw_aspect, aspect_key, "generic security topic outside aspect ontology")
+        return _v3_rejected(raw_aspect, aspect_key, "generic security topic outside canonical aspect categories")
 
     if aspect_key == "bottom":
         if re.search(r"\b(plate|panel|cover|screw|access|upgrade)\b", context_key):
@@ -1227,7 +1227,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
     if aspect_key in V3_REJECT_EXACT:
         return _v3_rejected(raw_aspect, aspect_key, "brand/model/use-case/service/accessory/generic term outside canonical laptop-quality aspects")
 
-    # Preserve the original conservative ontology for everything not covered by
+    # Preserve the original conservative canonical aspect mapping for everything not covered by
     # the full-corpus v3 refinement.
     return _classify_aspect_v2(aspect, context)
 
@@ -1350,7 +1350,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
     if aspect_key == "capacity":
         # Give the core v3 classifier first chance at battery/storage context.
         core = _classify_aspect_v3_core(aspect, context)
-        if core.ontology_status != "unmapped":
+        if core.mapping_status != "unmapped":
             return core
         return _v3_rejected(raw_aspect, aspect_key, "capacity remains ambiguous without battery/storage cue")
 

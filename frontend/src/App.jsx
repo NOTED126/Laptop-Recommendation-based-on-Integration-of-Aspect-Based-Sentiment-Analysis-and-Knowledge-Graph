@@ -1857,7 +1857,7 @@ function AspectReviewEvidence({ evidence }) {
 
       <p className="review-evidence-note">
         Review snippets are automatically selected from the original review
-        text using aspect phrases detected by the ATE and ontology pipeline.
+        text using aspect phrases detected by the ATE and canonical aspect categorization and normalization pipeline.
         Sentiment labels are predictions produced by the trained ABSA model
         and may contain classification errors. These snippets are provided
         for transparency and supporting evidence; recommendation scores are
