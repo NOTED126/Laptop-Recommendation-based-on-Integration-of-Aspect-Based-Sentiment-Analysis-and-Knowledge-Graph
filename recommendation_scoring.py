@@ -1,62 +1,9 @@
 """
-Evidence-aware recommendation scoring for the laptop recommendation thesis.
+Calculate evidence-aware aspect scores from the canonical v3 summaries
 
-This script consumes the FINAL canonical aspect v3 laptop-level experience summary and
-creates reusable aspect scores for recommendation and Neo4j import.
-
-Default input
--------------
-pipeline_output_v3/laptop_experience_aspect_summary_v3.csv
-
-Core scoring policy
--------------------
-For one laptop l and aspect a:
-
-    n = positive + negative + neutral + mixed
-
-    raw_score = (
-        1.0 * positive
-        + neutral_weight * neutral
-        + mixed_weight * mixed
-        + 0.0 * negative
-    ) / n
-
-The global aspect prior is calculated with the same formula using all laptops.
-The evidence-aware score is then:
-
-    adjusted_score = (n * raw_score + k * prior_score) / (n + k)
-
-where k is the prior strength (default 10 review-equivalents).
-
-Confidence is kept SEPARATE from quality:
-
-    confidence = n / (n + k)
-
-Evidence labels
----------------
-0 reviews      -> no_evidence
-1-4 reviews    -> insufficient
-5-9 reviews    -> limited
-10-19 reviews  -> moderate
-20+ reviews    -> strong
-
-Missing laptop-aspect combinations are explicitly created. They receive:
-    adjusted_score = global aspect prior
-    confidence = 0
-    evidence_level = no_evidence
-
-This avoids incorrectly treating missing evidence as a score of zero.
-
-Optional weighted ranking
--------------------------
-Pass weights using canonical aspect identifiers, e.g.:
-
-    python recommendation_scoring.py \
-        --weights "BATTERY_LIFE=50,PERFORMANCE=30,THERMAL_PERFORMANCE=20"
-
-Weights do not need to sum to 100; they are normalized automatically.
-Recommendation score and evidence confidence are both reported on 0-100 scales
-but remain separate values.
+Use review counts and a global prior (k=10 by default)
+Keep sentiment score separate from evidence confidence
+Aspects without reviews use the prior and have zero confidence
 """
 
 from __future__ import annotations
@@ -98,7 +45,7 @@ COUNT_COLUMNS = [
 
 
 def evidence_level(n: int) -> str:
-    """Convert review support count into a human-readable evidence tier."""
+    # Convert review support count into a human-readable evidence tier
     if n <= 0:
         return "no_evidence"
     if n < 5:
@@ -111,7 +58,7 @@ def evidence_level(n: int) -> str:
 
 
 def validate_input(df: pd.DataFrame) -> pd.DataFrame:
-    """Validate schema and aggregation arithmetic, then return a clean copy."""
+    # Validate schema and aggregation arithmetic, then return a clean copy
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
         raise ValueError(
@@ -121,7 +68,7 @@ def validate_input(df: pd.DataFrame) -> pd.DataFrame:
 
     clean = df.copy()
 
-    # The recommendation layer should only use user-experience aspects.
+    # Score experience aspects only
     clean = clean[clean["aspect_type"].astype(str).str.lower() == "experience"].copy()
     if clean.empty:
         raise ValueError("No rows with aspect_type='experience' were found.")
@@ -179,7 +126,7 @@ def score_from_counts(
     neutral_weight: float,
     mixed_weight: float,
 ) -> pd.Series:
-    """Calculate direct sentiment score. Returns NaN where mentions == 0."""
+    # Calculate direct sentiment score. Returns NaN where mentions == 0
     numerator = (
         positive.astype(float)
         + neutral_weight * neutral.astype(float)
@@ -195,7 +142,7 @@ def compute_aspect_priors(
     neutral_weight: float = DEFAULT_NEUTRAL_WEIGHT,
     mixed_weight: float = DEFAULT_MIXED_WEIGHT,
 ) -> pd.DataFrame:
-    """Compute one global prior for every canonical experience aspect."""
+    # Compute one global prior for every canonical experience aspect
     grouped = (
         df.groupby(["canonical_aspect", "canonical_label"], as_index=False)
         .agg(
@@ -237,19 +184,14 @@ def build_complete_laptop_aspect_scores(
     neutral_weight: float = DEFAULT_NEUTRAL_WEIGHT,
     mixed_weight: float = DEFAULT_MIXED_WEIGHT,
 ) -> pd.DataFrame:
-    """
-    Create a complete laptop x canonical-aspect matrix and calculate evidence-aware scores.
-
-    Missing combinations are retained with zero observed reviews, prior-only adjusted score,
-    and zero evidence confidence.
-    """
+    # Create all laptop-aspect pairs, including those with no review evidence
     if prior_strength <= 0:
         raise ValueError("prior_strength must be greater than zero.")
 
     laptops = pd.DataFrame({"laptop": sorted(df["laptop"].unique())})
     aspects = priors[["canonical_aspect", "canonical_label"]].drop_duplicates().copy()
 
-    # Cross join to ensure zero-evidence combinations are represented explicitly.
+    # Include aspects with no reviews
     laptops["_key"] = 1
     aspects["_key"] = 1
     complete = laptops.merge(aspects, on="_key").drop(columns="_key")
@@ -307,7 +249,7 @@ def build_complete_laptop_aspect_scores(
 
     n = complete["reviews_mentioning_aspect"].astype(float)
 
-    # Algebraically equivalent to n*raw_score, but this form also works when n=0.
+    # This also handles zero-review aspects
     observed_weighted_sum = (
         complete["positive_reviews"].astype(float)
         + neutral_weight * complete["neutral_reviews"].astype(float)
@@ -325,7 +267,7 @@ def build_complete_laptop_aspect_scores(
     complete["adjusted_score_0_100"] = 100.0 * complete["adjusted_score"]
     complete["evidence_confidence_0_100"] = 100.0 * complete["evidence_confidence"]
 
-    # Useful for explanations and auditability.
+    # Keep these fields for score explanations
     complete["prior_strength"] = float(prior_strength)
     complete["neutral_weight"] = float(neutral_weight)
     complete["mixed_weight"] = float(mixed_weight)
@@ -364,7 +306,7 @@ def build_complete_laptop_aspect_scores(
 
 
 def parse_weights(weight_string: str) -> Dict[str, float]:
-    """Parse 'ASPECT=weight,ASPECT=weight' into a dictionary."""
+    # Parse 'ASPECT=weight,ASPECT=weight' into a dictionary
     weights: Dict[str, float] = {}
 
     if not weight_string or not weight_string.strip():
@@ -407,7 +349,7 @@ def parse_weights(weight_string: str) -> Dict[str, float]:
 def normalize_weights(
     weights: Dict[str, float], available_aspects: Iterable[str]
 ) -> Dict[str, float]:
-    """Validate aspect keys and normalize positive weights to sum to 1."""
+    # Validate aspect keys and normalize positive weights to sum to 1
     available = set(available_aspects)
     unknown = sorted(set(weights) - available)
     if unknown:
@@ -428,16 +370,7 @@ def rank_laptops(
     weights: Dict[str, float],
     top_n: int | None = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Calculate weighted recommendation scores and separate evidence confidence.
-
-    Returns
-    -------
-    ranking_df:
-        One row per laptop.
-    breakdown_df:
-        One row per laptop x selected aspect showing each contribution.
-    """
+    # Calculate weighted laptop rankings and per-aspect breakdowns
     normalized_weights = normalize_weights(
         weights,
         scores["canonical_aspect"].unique(),
@@ -470,7 +403,7 @@ def rank_laptops(
         )
     )
 
-    # A compact indicator that can be displayed in UI or used as a tie-break diagnostic.
+    # Summary value for UI or tie-breaks
     no_evidence_counts = (
         selected.assign(no_evidence=(~selected["has_direct_evidence"]).astype(int))
         .groupby("laptop")["no_evidence"]
@@ -548,7 +481,7 @@ def save_outputs(
     breakdown: pd.DataFrame | None = None,
     weights: Dict[str, float] | None = None,
 ) -> None:
-    """Save all generated artifacts and a machine-readable scoring configuration."""
+    # Save all generated artifacts and a machine-readable scoring configuration
     output_dir.mkdir(parents=True, exist_ok=True)
 
     priors_path = output_dir / "aspect_priors.csv"
@@ -590,7 +523,7 @@ def save_outputs(
 
 
 def print_summary(priors: pd.DataFrame, scores: pd.DataFrame) -> None:
-    """Print useful validation information after scoring."""
+    # Print useful validation information after scoring
     laptops = scores["laptop"].nunique()
     aspects = scores["canonical_aspect"].nunique()
     expected_rows = laptops * aspects

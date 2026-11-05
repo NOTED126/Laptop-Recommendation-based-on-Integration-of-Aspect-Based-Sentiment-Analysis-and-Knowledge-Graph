@@ -1,30 +1,7 @@
 """
-prepare_review_evidence.py
-==========================
-
-Create Neo4j-ready review provenance data from:
-1. reviews/*.csv
-2. pipeline_output_v3/canonical_review_level_aspects_v3.csv
-3. knowledge_graph/data/laptops.csv
-
-Output
-------
+Prepare review nodes and evidence links from the original reviews
+and canonical review-level CSV. Save outputs in
 knowledge_graph/review_evidence/
-    review_nodes.csv
-    laptop_review_edges.csv
-    review_aspect_edges.csv
-    review_evidence_manifest.json
-
-The evidence model is:
-
-    (Laptop)-[:HAS_REVIEW]->(Review)
-    (Review)-[:MENTIONS]->(Aspect)
-
-`MENTIONS` retains:
-- review-level aspect sentiment
-- positive / negative / neutral mention counts
-- raw aspect strings
-- a short evidence snippet taken from the original review
 """
 
 import argparse
@@ -57,12 +34,7 @@ def normalize_text(text):
 
 
 def split_sentences(text):
-    """
-    Lightweight sentence/list splitter.
-
-    Reviews often contain bullets and paragraph breaks, so newline boundaries
-    are useful evidence boundaries as well as normal punctuation.
-    """
+    # Split review text at sentence and list boundaries
     text = str(text).replace("\r\n", "\n").replace("\r", "\n")
     chunks = re.split(r"(?<=[.!?])\s+|\n+", text)
     return [chunk.strip(" \t-*•") for chunk in chunks if chunk.strip(" \t-*•")]
@@ -86,14 +58,8 @@ def term_tokens(text):
 
 def evidence_snippet(review_text, raw_aspects, canonical_label, max_chars=420):
     """
-    Pick one concise sentence/list item that most clearly supports the
-    review-aspect relationship.
-
-    Priority:
-    1. Sentence containing an exact raw-aspect phrase.
-    2. Sentence with the largest token overlap with raw-aspect phrases.
-    3. Sentence overlapping the canonical aspect label.
-    4. No snippet rather than pretending unrelated text is evidence.
+    Choose a short evidence sentence matching the aspect phrase
+    Fall back to the sentence with the most matching words
     """
     sentences = split_sentences(review_text)
     if not sentences:
@@ -105,7 +71,7 @@ def evidence_snippet(review_text, raw_aspects, canonical_label, max_chars=420):
         if term.strip()
     ]
 
-    # Prefer the most specific/longest exact phrase.
+    # Prefer the most longest exact aspect phrase
     exact_candidates = []
     for sentence in sentences:
         normalized_sentence = normalize_text(sentence)
@@ -120,7 +86,7 @@ def evidence_snippet(review_text, raw_aspects, canonical_label, max_chars=420):
             )
 
     if exact_candidates:
-        # Most-specific phrase, then shorter sentence for readability.
+        # Prefer specific matches, then shorter sentences
         exact_candidates.sort(key=lambda x: (-x[0], x[1]))
         chosen = exact_candidates[0][2]
         return truncate(chosen, max_chars)
@@ -239,13 +205,7 @@ def main():
             f"Canonical file missing columns: {sorted(missing)}"
         )
 
-    # The recommendation graph's (:Aspect) nodes represent only the
-    # 24 user-experience aspects. Specification mentions such as RAM,
-    # CPU, GPU, storage and NPU are already represented by structured
-    # laptop specifications and are not part of HAS_ASPECT_SCORE.
-    #
-    # Therefore review provenance for recommendation explainability
-    # must use experience rows only.
+    # Include experience aspects only; hardware specs are stored separately
     total_canonical_rows = len(canonical)
     specification_rows = int(
         (canonical["aspect_type"] == "specification").sum()

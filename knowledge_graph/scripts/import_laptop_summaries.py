@@ -1,15 +1,8 @@
-"""Verify and optionally import REVIEWED Gemini-generated laptop summaries to Neo4j.
+"""
+Check and optionally import approved laptop summaries into Neo4j
 
-Safeguards:
-- All 30 summaries must be explicitly reviewed and approved.
-- The current evidence CSV must match each draft's source-data hash.
-- Existing Laptop nodes are MATCHED, never MERGEd/deleted.
-- --apply is required to write. Without it, this performs file checks only.
-- Never use --clear-existing or rerun the main graph importer for summaries.
-
-From project root (Program/):
-    python knowledge_graph/scripts/import_laptop_summaries.py
-    python knowledge_graph/scripts/import_laptop_summaries.py --apply
+Requires all 30 approvals and matching evidence hashes
+Read-only unless --apply is supplied; existing Laptop nodes are reused
 """
 from __future__ import annotations
 
@@ -125,8 +118,7 @@ def cli():
         print("DRY RUN ONLY — no Neo4j write. Re-run with --apply to update existing Laptop nodes.")
         return
 
-    # Mirror the project's established backend/.env loader while allowing
-    # explicit PowerShell environment variables to override .env values.
+    # Use backend/.env unless environment variables override it
     try:
         from dotenv import load_dotenv
     except ImportError:

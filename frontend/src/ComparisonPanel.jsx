@@ -23,7 +23,7 @@ function ComparisonCell({ children, first = false, className = "" }) {
 }
 
 function ComparisonRow({ row, items }) {
-  // Only explicitly configured numerical criteria receive comparative highlights.
+  // Highlight only comparable numeric specifications
   const highlights = row.metric
     ? numericExtremes(items, (item) => item[row.metric], row.better)
     : items.map(() => null);
@@ -235,7 +235,7 @@ export default function ComparisonPanel({ items, resultsMode, onClose, onRemove 
       .then((laptops) => { if (!cancelled) setSnapshot({ key: selectionKey, laptops }); })
       .catch((err) => { if (!cancelled) setError(`Unable to load comparison details: ${err.message}`); });
     return () => { cancelled = true; };
-  // ID-based key prevents needless network requests when parent rerenders.
+  // Avoid refetching when the selected laptop IDs stay the same
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey, retry]);
 

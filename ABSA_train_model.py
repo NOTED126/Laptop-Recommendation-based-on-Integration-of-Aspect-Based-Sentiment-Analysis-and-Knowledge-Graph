@@ -12,7 +12,7 @@ from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from ATE_train_model import RealtimeLoggingCallback
 
 
-# Paths & configuration
+# Model Paths
 DATA_PATH = "SemEval_2014_dataset/Final_SemEval.csv"
 MODEL_CHECKPOINT = "distilbert-base-uncased"
 SAVED_MODEL_PATH = "aspect_sentiment/best_model"
@@ -27,7 +27,7 @@ id2label_sentiment = {v: k for k, v in label2id_sentiment.items()}
 max_length = 128
 
 
-# Class for preparing dataset for pytorch
+# PyTorch dataset
 class ABSADataset(Dataset):
     def __init__(self, data):
         self.data = data
@@ -54,7 +54,7 @@ class ABSADataset(Dataset):
         }
 
 
-# Data preparation
+# Prepare sentence-aspect pairs
 def data_preparation_asc(data_path):
     # Read final SemEval 2014 dataset after data preprocessing
     df = pd.read_csv(data_path)
@@ -70,12 +70,14 @@ def data_preparation_asc(data_path):
     print("\nLabel distribution:")
     print(df["sentiment"].value_counts())
 
-    # Split by complete sentence, not by individual sentence-aspect rows.
-    # A sentence may contain multiple aspects; row-level splitting can therefore
-    # place one aspect from a sentence in training and another aspect from the
-    # same sentence in validation, which leaks sentence context across splits.
-    # StratifiedGroupKFold keeps each sentence in exactly one split while also
-    # preserving the sentiment distribution more closely than a plain group split.
+    """
+    Split by complete sentence, not by individual sentence-aspect rows.
+    A sentence may contain multiple aspects; row-level splitting can therefore
+    place one aspect from a sentence in training and another aspect from the
+    same sentence in validation, which leaks sentence context across splits.
+    StratifiedGroupKFold keeps each sentence in exactly one split while also
+    preserving the sentiment distribution more closely than a plain group split.
+    """
     group_key = df["review"].astype(str).str.strip()
     splitter = StratifiedGroupKFold(n_splits=10, shuffle=True, random_state=42)
     train_idx, val_idx = next(splitter.split(df, y=df["label"], groups=group_key))

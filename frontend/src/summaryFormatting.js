@@ -1,5 +1,5 @@
-// Presentation-only formatting for approved, offline-generated review summaries.
-// Never edits the summary text or treats it as HTML.
+// Format the reviewed summaries for display
+// Keep the original text unchanged
 const aspectNames = [
   "software / os experience", "connectivity / ports", "reliability / stability",
   "design / form factor", "connectivity and ports", "overall system performance",
@@ -49,13 +49,13 @@ const toneByTerm = new Map(terms.map((item) => [item.text, item.tone]));
 const quoteRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const matchTerms = new RegExp(`\\b(?:${terms.map(({text}) => quoteRegex(text)).join("|")})\\b`, "gi");
 
-/** Return plain and emphasized segments, preserving every character verbatim. */
+// Return plain and emphasized segments, preserving every character verbatim
 export function splitExperienceSummary(text) {
   const value = typeof text === "string" ? text : "";
   if (!value) return [];
   const segments = [];
   let lastEnd = 0;
-  // A fresh regex per call avoids cross-render shared lastIndex state.
+  // Use a fresh regex for each render
   for (const match of value.matchAll(new RegExp(matchTerms.source, "gi"))) {
     const index = match.index;
     if (index > lastEnd) segments.push({ text: value.slice(lastEnd, index), tone: null });

@@ -13,14 +13,14 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
 
 def format_safe_filename(name: str) -> str:
-    """Strips invalid file system characters and replaces spaces/hyphens with underscores."""
+    # Make a safe file name
     cleaned = re.sub(r'[\\/*?:"<>|]', '', name)
     cleaned = re.sub(r'[\s-]+', '_', cleaned)
     return cleaned.strip('_')
 
 
 def modify_link(url: str) -> str:
-    """Transforms a standard product URL into the paginated review listing URL format."""
+    # Build the review page URL
     text = url.replace("/product/", "/site/reviews/")
     text = re.sub(r"/[^/]+/sku/", "/", text)
     text = re.sub(r"/reviews$", "?variant=A&sort=NEWEST&page=", text)
@@ -49,7 +49,7 @@ class BestBuyReviewScraper:
         os.makedirs(self.output_folder, exist_ok=True)
 
     def init_driver(self):
-        """Initializes a new Firefox WebDriver instance."""
+        # Start Firefox WebDriver
         options = Options()
         options.binary_location = self.firefox_binary
         options.add_argument("--lang=en-US")
@@ -61,7 +61,7 @@ class BestBuyReviewScraper:
         self.driver.set_page_load_timeout(30)
 
     def close_driver(self):
-        """Safely terminates the active browser driver."""
+        # Close Firefox WebDriver
         if self.driver:
             try:
                 self.driver.quit()
@@ -72,7 +72,7 @@ class BestBuyReviewScraper:
                 self.driver = None
 
     def scrape_product_reviews(self, product_name: str, info: dict) -> list[dict]:
-        """Scrapes review entries across pages for a single product."""
+        # Scrape reviews for one laptop
         self.init_driver()
         reviews_list = []
         review_count = 0
@@ -90,7 +90,7 @@ class BestBuyReviewScraper:
                 print(f"Opening page {page}...")
                 self.driver.get(f"{base_url}{page}")
 
-                # Random sleep interval to mimic human behavior
+                # Pause between page requests
                 time.sleep(random.randint(5, 10))
 
                 try:
@@ -107,13 +107,13 @@ class BestBuyReviewScraper:
 
                     print(f"Extracting review {review_count + 1}...")
 
-                    # Extract text content
+                    # Read review text
                     try:
                         text = elem.find_element(By.CSS_SELECTOR, self.css_path_review_text).text
                     except NoSuchElementException:
                         text = "No text found"
 
-                    # Extract posted date title attribute
+                    # Read the review date
                     try:
                         date_elem = elem.find_element(By.CSS_SELECTOR, self.css_path_review_date)
                         date = date_elem.get_attribute("title")
@@ -139,7 +139,7 @@ class BestBuyReviewScraper:
         return reviews_list
 
     def save_reviews_csv(self, product_name: str, reviews_list: list[dict]):
-        """Saves a product's scraped reviews to an individual CSV file."""
+        # Save reviews for one laptop to CSV
         if not reviews_list:
             print(f"No reviews to save for {product_name}.")
             return
@@ -152,7 +152,7 @@ class BestBuyReviewScraper:
         print(f"Saved to {file_path}")
 
     def scrape_all(self, product_dict: dict):
-        """Iterates over all defined products, extracting and saving reviews."""
+        # Scrape and save each laptop review file
         total_products = len(product_dict)
 
         for counter, (product_name, info) in enumerate(product_dict.items(), start=1):

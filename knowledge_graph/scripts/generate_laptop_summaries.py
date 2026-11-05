@@ -1,17 +1,8 @@
-"""Create, generate (via Gemini), validate and review fixed laptop summaries.
+"""
+Prepare, generate, check and review offline laptop summaries
 
-This is an OFFLINE workflow, not called by FastAPI or the frontend.
-The Gemini API key must be set locally as GEMINI_API_KEY; never commit it.
-
-Examples from Program/:
-    python knowledge_graph/scripts/generate_laptop_summaries.py --mode prepare
-    python knowledge_graph/scripts/generate_laptop_summaries.py --mode generate --limit 1
-    python knowledge_graph/scripts/generate_laptop_summaries.py --mode generate
-    python knowledge_graph/scripts/generate_laptop_summaries.py --mode review
-
-Gemini chooses evidence-eligible aspect themes and proposes prose. Python
-validates each proposed sentence against deterministic sentiment patterns and
-replaces unsupported wording locally. Original model proposals remain for audit.
+Gemini drafts the text; Python checks claims against review counts
+Set GEMINI_API_KEY locally and never commit it
 """
 from __future__ import annotations
 
@@ -35,8 +26,7 @@ STRENGTH_MIN = 75.0
 WEAKNESS_MAX = 55.0
 API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
-# Exact, model-facing terms make individual claims auditable by Python.
-# Do not infer these nouns from review snippets or hardware specifications.
+# Use fixed names so the summary claims can be checked
 SUMMARY_TERMS = {
     "AI_FEATURES": "AI features",
     "AUDIO": "audio quality",
@@ -63,8 +53,10 @@ SUMMARY_TERMS = {
     "VALUE_FOR_MONEY": "value for money",
 }
 
-# These summaries are interpretations of predicted review labels, not measured
-# laptop performance. Negative scores with split P/N/U/M evidence need care.
+"""
+These summaries are interpretations of predicted review labels, not measured
+laptop performance. Negative scores with split P/N/U/M evidence need care.
+"""
 BANNED_CLAIMS = re.compile(
     r"\b(?:exceptional|outstanding|flawless|perfect|guaranteed|objectively|"
     r"proven|certified|vibrant|long[- ]lasting|reliable|unreliable|"
@@ -77,12 +69,7 @@ BANNED_CLAIMS = re.compile(
 
 
 def sentiment_pattern(a):
-    """Count-based interpretation; adjusted scores govern eligibility separately.
-
-    Conservative *descriptive* rule. Exactly 50% negative, provided N>P,
-    qualifies as negative-majority (predominantly negative at >=50% of all
-    predictions); otherwise unresolved distributions stay mixed/divided.
-    """
+    # Describe sentiment using review counts, not adjusted scores
     n = a["mentions"]
     if not n:
         return "no_evidence"
@@ -97,7 +84,7 @@ def sentiment_pattern(a):
 
 
 def join_terms(terms):
-    """Readable grammatical conjunction for 1–3 exact audit terms."""
+    # Readable grammatical conjunction for 1-3 exact audit terms
     if len(terms) == 1:
         return terms[0]
     if len(terms) == 2:
@@ -106,13 +93,7 @@ def join_terms(terms):
 
 
 def render_evidence_grounded_text(packet, strength_ids, weakness_ids):
-    """Python owns the polarity language, Gemini only picks eligible themes.
-
-    This prevents the old failure mode: Fan Noise (N=14, P=7, n=23) must not
-    be described as 'mixed' merely because the score is evidence-adjusted.
-    Templates deliberately avoid product attributes, causal assumptions, and
-    claims about true laptop quality. No extra Gemini calls are involved.
-    """
+    # Use count-based sentiment wording and avoid unsupported claims
     by_id = {a["aspect_id"]: a for a in packet["aspects"]}
     s_groups, w_groups = defaultdict(list), defaultdict(list)
     for aid in strength_ids:
@@ -174,8 +155,7 @@ def render_evidence_grounded_text(packet, strength_ids, weakness_ids):
     if not weaknesses:
         weaknesses = ["Available review evidence does not establish a sufficiently supported weakness."]
 
-    # A concise overview uses the same Python-computed categories but avoids
-    # repeating the complete strengths/weaknesses paragraphs verbatim.
+    # Keep the overview short and avoid repeating the details
     intro, concerns = [], []
     if s_groups["positive_majority"]:
         intro.append("Customer reviews show predominantly positive sentiment for "
@@ -216,8 +196,7 @@ def render_evidence_grounded_text(packet, strength_ids, weakness_ids):
             "Available customer reviews do not establish sufficiently supported "
             "strengths or weaknesses under the evidence rules."
         )
-    # Capitalize() would lower-case ID terms if added in the future. We use
-    # plain English summary_terms, so lower-case is intentional.
+    # Keep these summary terms in lower case
     overall = overview
     note = (
         "Sentiment was automatically predicted from customer reviews; "
@@ -232,12 +211,9 @@ def render_evidence_grounded_text(packet, strength_ids, weakness_ids):
 
 
 def normalize_generated(generated, packet):
-    """Keep supported Gemini prose; repair ungrounded wording without API calls.
-
-    The AI selects aspect IDs and proposes prose. Python assigns each selected
-    aspect a count-based sentiment pattern and checks the text. Invalid claims
-    receive a conservative deterministic substitute, recorded for human review.
-    Raw proposed text remains under model_proposal for transparency.
+    """
+    Keep supported wording and replace unsupported claims locally
+    Save the original proposal for review
     """
     if not isinstance(generated, dict):
         raise ValueError("Gemini output must be a JSON object")
@@ -264,8 +240,8 @@ def normalize_generated(generated, packet):
         packet, chosen["strength_aspect_ids"], chosen["weakness_aspect_ids"]
     )
     result = {**fallback, **chosen}
-    # Validate one candidate field at a time, with the others still grounded.
-    # Importer sees ONLY the safe resulting four prose fields, not proposals.
+    # Check one summary field at a time
+    # Import only the checked summaries
     for field in ("strengths_summary", "weaknesses_summary", "overall_summary", "evidence_note"):
         candidate = generated.get(field)
         result[field] = candidate
@@ -286,7 +262,7 @@ def normalize_generated(generated, packet):
 
 
 def aspect_terms_in(text, packet):
-    """Identify exact audited summary terms, longest first (gaming vs performance)."""
+    # Identify exact audited summary terms, longest first (gaming vs performance)
     found = set()
     remaining = text.lower()
     for aspect in sorted(packet["aspects"], key=lambda x: -len(x["summary_term"])):
@@ -490,8 +466,7 @@ def invoke_gemini(packet, api_key, model, timeout_seconds=90):
         raise RuntimeError(f"Gemini returned malformed JSON: {exc}") from None
 
 
-# Keep these cues precise. The fallback renderer uses the first phrase of each
-# category verbatim; Gemini can use natural equivalents when equally grounded.
+# Keep fallback phrases consistent with the category
 POSITIVE_LANGUAGE = re.compile(
     r"\b(?:predominantly positive|mostly positive|largely positive|positive majority|"
     r"favourable|favorable|positive sentiment|positive feedback|"
@@ -512,7 +487,7 @@ NEGATIVE_CONSENSUS_LANGUAGE = re.compile(
 
 
 def split_claim_clauses(text):
-    # Separate contrastive clauses to attach sentiment words to the right ID.
+    # Separate contrastive clauses to attach sentiment words to the right ID
     return [p.strip() for p in re.split(
         r"(?<=[.!?;])\s+|;\s*|\s*,?\s+(?:while|whereas|however|but)\s+",
         text, flags=re.I
@@ -521,19 +496,21 @@ def split_claim_clauses(text):
 
 def check_sentiment_wording(text, packet, selected_ids, field):
     by_id = {a["aspect_id"]: a for a in packet["aspects"]}
-    # In the overview, generic text without aspect names is permitted; any
-    # named aspect is checked against its own observed category.
+    """
+    In the overview, generic text without aspect names is permitted; any
+    named aspect is checked against its own observed category
+    """
     for aid in selected_ids:
         aspect = by_id[aid]
         related = [cl for cl in split_claim_clauses(text)
                    if aid in aspect_terms_in(cl, packet)]
         if not related:
-            continue  # Presence is enforced elsewhere for strengths/weaknesses.
+            continue  # Presence is enforced elsewhere for strengths/weaknesses
         pattern = aspect["sentiment_pattern"]
         for clause in related:
             if pattern == "positive_majority":
                 valid = bool(POSITIVE_LANGUAGE.search(clause))
-                # An unsupported 'mixed' label must not replace a clear majority.
+                # An unsupported 'mixed' label must not replace a clear majority
                 valid = valid and not bool(MIXED_LANGUAGE.search(clause))
             elif pattern == "negative_majority":
                 valid = bool(NEGATIVE_LANGUAGE.search(clause))
@@ -556,7 +533,7 @@ def check_sentiment_wording(text, packet, selected_ids, field):
 
 
 def validate_output(generated, packet):
-    """Conservative machine checks; human review remains mandatory for semantics."""
+    # Conservative machine checks; human review remains mandatory for semantics
     if not isinstance(generated, dict):
         raise ValueError("Gemini output must be a JSON object")
     text_fields = (
@@ -603,15 +580,17 @@ def validate_output(generated, packet):
                 f"Aspect term mismatch in {field}; missing={missing}, unsupported={extra}. "
                 "Use each chosen aspect's exact summary_term."
             )
-    # The overview can omit names, but any names it includes must be chosen.
+    # The overview can omit names, but any names it includes must be chosen
     for field in ("overall_summary", "evidence_note"):
         extra = aspect_terms_in(generated[field], packet) - chosen
         if extra:
             raise ValueError(f"Unselected aspect claim in {field}: {sorted(extra)}")
 
-    # Each aspect's claimed sentiment must agree with Python's counted labels.
-    # This is scoped per aspect and per clause; a single global 'mixed' word
-    # cannot make a negative-majority fan-noise description valid.
+    """
+    Each aspect's claimed sentiment must agree with Python's counted labels
+    This is scoped per aspect and per clause; a single global 'mixed' word
+    cannot make a negative-majority fan-noise description valid
+    """
     for field, IDs in (
         ("strengths_summary", chosen_strengths),
         ("weaknesses_summary", chosen_weaknesses),
@@ -638,7 +617,7 @@ def current_draft_matches(data, packet, model):
 
 
 def archive_outdated_drafts(packets, draft_dir, model, archive_root):
-    """Explicit non-destructive migration from older prompt/model drafts."""
+    # Explicit non-destructive migration from older prompt/model drafts
     packet_by_name = {p["laptop"]: p for p in packets}
     if not draft_dir.exists():
         print("No drafts directory yet; nothing to archive.")
@@ -675,7 +654,7 @@ def run(args):
         if input_path.exists():
             previous = json.loads(input_path.read_text(encoding="utf-8"))
             if previous.get("input_sha256") != p["input_sha256"]:
-                # Preserve v1 evidence packets before writing the revised packets.
+                # Preserve v1 evidence packets before writing the revised packets
                 target = args.output_dir / "archive" / "prior_inputs" / previous.get(
                     "input_sha256", "unknown"
                 ) / input_path.name
@@ -705,8 +684,10 @@ def run(args):
             draft = json.loads(rejected_path.read_text(encoding="utf-8"))
             if not current_draft_matches(draft, p, args.model):
                 raise RuntimeError(f"Rejected candidate is stale or uses another model: {p['laptop']}")
-            # For rejected output, edit the model_proposal ID arrays, then
-            # normalize locally without consuming another request.
+            """
+            For rejected output, edit the model_proposal ID arrays, then
+            normalize locally without consuming another request
+            """
             source = draft.get("model_proposal", draft)
             draft.update(normalize_generated(source, p))
             validate_output(draft, p)
@@ -737,14 +718,16 @@ def run(args):
             if args.limit and generated_count >= args.limit:
                 break
             print(f"Generating draft for: {p['laptop']}", flush=True)
-            # On invalid model output, fail rather than store an unsupported claim.
+            # On invalid model output, fail rather than store an unsupported claim
             for attempt in range(3):
                 try:
                     generated = invoke_gemini(p, key, args.model)
                     break
                 except RuntimeError as exc:
-                    # Retry transient congestion, never burn requests against
-                    # a daily quota error or a permanent model/configuration error.
+                    """
+                    Retry transient congestion, never burn requests against
+                    a daily quota error or a permanent model/configuration error
+                    """
                     if "HTTP 503" not in str(exc) or attempt == 2:
                         raise
                     wait = 4 * (attempt + 1)
@@ -763,9 +746,11 @@ def run(args):
                 draft.update(normalize_generated(generated, p))
                 validate_output(draft, p)
             except ValueError as exc:
-                # Preserve the quota-consuming response for offline fixes;
-                # DO NOT mark it approved or put it in importable drafts.
-                # Keep model_proposal even when normalization fails.
+                """
+                Preserve the quota-consuming response for offline fixes;
+                DO NOT mark it approved or put it in importable drafts
+                Keep model_proposal even when normalization fails
+                """
                 draft.setdefault("model_proposal", generated)
                 draft["validation_error"] = str(exc)
                 rejected_path = args.output_dir / "rejected" / draft_name(p["laptop"])
@@ -776,7 +761,7 @@ def run(args):
                     "run --mode recover after editing it to pass validation."
                 ) from None
             if path.exists():
-                # Even --force never silently destroys an approved or prior draft.
+                # Even --force never silently destroys an approved or prior draft
                 stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
                 backup_dir = args.output_dir / "archive" / ("forced_" + stamp)
                 backup_dir.mkdir(parents=True, exist_ok=True)

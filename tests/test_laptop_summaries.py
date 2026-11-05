@@ -1,4 +1,6 @@
-"""Offline regression tests. No Gemini API key or Neo4j connection required."""
+"""
+Offline regression tests. No Gemini API key or Neo4j connection required
+"""
 import importlib.util
 import json
 from pathlib import Path
@@ -13,8 +15,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 DATA = ROOT / "recommendation_scores/laptop_aspect_scores.csv"
 
-# Source-only checkout: the validated score CSV is distributed separately.
-# When that CSV is restored, all original evidence-based tests run normally.
+# The score CSV may be absent in a source-only checkout
 pytestmark = pytest.mark.skipif(
     not DATA.is_file(),
     reason="Requires finalized recommendation_scores/laptop_aspect_scores.csv (excluded from source-only ZIP)",
@@ -95,7 +96,7 @@ def test_mixed_sentiment_weakness_requires_caution():
     with pytest.raises(ValueError, match="Sentiment mismatch"):
         module.validate_output(out, p)
     out["weaknesses_summary"] = f"Feedback on {mixed['summary_term']} is divided."
-    # A natural, evidence-consistent paraphrase is now accepted.
+    # Allow paraphrases that match the evidence
     assert module.validate_output(out, p)
     normalized = module.normalize_generated(out, p)
     assert module.validate_output(normalized, p)
@@ -341,8 +342,7 @@ def test_neutral_dominated_feedback_is_inconclusive_not_divided():
                "neutral_reviews": 12, "mixed_reviews": 3}
     assert module.sentiment_pattern(example) == "neutral_or_inconclusive"
     a = next(x for x in packet["aspects"] if x["aspect_id"] == "CHARGING")
-    # Controlled input to exercise the neutral-dominant wording while leaving
-    # the score/eligibility rules unchanged.
+    # Test neutral-heavy summaries without changing scoring rules
     variant = {**packet, "aspects": [
         {**x, **example, "sentiment_pattern": "neutral_or_inconclusive"}
         if x["aspect_id"] == "CHARGING" else x for x in packet["aspects"]

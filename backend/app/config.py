@@ -5,9 +5,7 @@ from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# backend/app/config.py
-# parent       -> backend/app
-# parent.parent -> backend
+# Resolve the backend directory
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = BACKEND_DIR / ".env"
 

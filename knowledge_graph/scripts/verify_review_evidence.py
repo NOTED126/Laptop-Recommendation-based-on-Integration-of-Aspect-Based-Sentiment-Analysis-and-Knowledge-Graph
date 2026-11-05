@@ -1,9 +1,6 @@
 """
-verify_review_evidence.py
-=========================
-
-Read-only checks for the review provenance layer.
-Loads AuraDB/local Neo4j settings from backend/.env.
+Check Review nodes and evidence links without changing the graph
+Reads the connection from backend/.env
 """
 
 import os

@@ -1,8 +1,6 @@
-"""Regression tests for the flexible, weighted two-stage refinement workflow.
-
-Run from Program/:
-    python -m pytest -q tests/test_two_stage_refinement.py
-These tests simulate Neo4j responses; live DB and external services aren't needed.
+"""
+Test two-stage recommendation logic using mocked Neo4j results.
+Run: python -m pytest -q tests/test_two_stage_refinement.py
 """
 import importlib
 import sys
@@ -15,7 +13,7 @@ from pydantic import ValidationError
 
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
-# Stub only the db dependency; services and validators are executed unchanged.
+# Mock the database, not the service logic
 if "app.db" not in sys.modules:
     fake_db_module = types.ModuleType("app.db")
     fake_db_module.db = None
@@ -30,7 +28,7 @@ DEFAULT_REFINED = {"BATTERY_LIFE": 35, "PERFORMANCE": 25, "DISPLAY_QUALITY": 15,
 
 
 class FakeGraph:
-    """15 deterministic laptop records with distinct sentiment profiles and prices."""
+    # 15 deterministic laptop records with distinct sentiment profiles and prices
     def __init__(self):
         self.queries = []
 
@@ -169,7 +167,7 @@ def test_stage2_uses_reweighted_stage1_aspects(fake_graph):
     weights = result["normalized_weights"]
     assert weights == pytest.approx({key: value / 200 for key, value in adjusted.items()})
     assert set(ids_from(result)) == set(original_ids)
-    # Server must verify against original Stage 1 weights, not edited Stage 2 weights.
+    # Mock the database, not the service logic
     requests = [p for q, p in fake_graph.queries if "LIMIT $top_n" in q]
     assert requests[1]["weights"] == pytest.approx([
         {"aspect_id": k, "weight": v / 100} for k, v in DEFAULT_INITIAL.items()

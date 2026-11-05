@@ -13,7 +13,7 @@ from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 
 # load_dotenv()
 
-# Paths & configuration
+# Model paths
 DATA_PATH = "SemEval_2014_dataset/Final_SemEval.csv"
 MODEL_CHECKPOINT = "distilbert-base-uncased"
 SAVED_MODEL_PATH = "aspect_extraction/best_model"
@@ -28,7 +28,7 @@ id2label = {v: k for k, v in label2id.items()}
 max_length = 128
 
 
-# Class for preparing dataset for pytorch
+# PyTorch dataset
 class ATEDataset(Dataset):
     def __init__(self, data):
         self.data = data
@@ -45,7 +45,7 @@ class ATEDataset(Dataset):
         }
 
 
-# Class for training evaluation
+# Training logs
 class RealtimeLoggingCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is None:
@@ -65,15 +65,15 @@ class RealtimeLoggingCallback(TrainerCallback):
             print(f"[epoch={epoch:.2f} | step={step}] " + " | ".join(parts))
 
 
-# Load pretrained DistilBert model
+# Load DistilBERT
 def load_model():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_CHECKPOINT)
     return tokenizer
 
 
-# Group the data for ATE model
+# Prepare grouped aspect labels
 def data_preparation(data_path):
-    # Read final SemEval 2014 dataset after data preprocessing
+    # Read the preprocessed dataset
     df = pd.read_csv(data_path)
 
     grouped = df.groupby("review").agg({
@@ -87,7 +87,7 @@ def data_preparation(data_path):
     return grouped
 
 
-# Assigns IOB for finding aspects
+# Assigns BIO labels with tokens
 def tokenize_align(tokenizer, data):
     tokenized = tokenizer(
         data["review"],
@@ -98,8 +98,10 @@ def tokenize_align(tokenizer, data):
 
     offsets = tokenized["offset_mapping"]
 
-    # Normal tokens default to O. Special tokens such as [CLS]/[SEP] use -100 so
-    # Hugging Face ignores them in both the token-classification loss and metrics.
+    """
+    Normal tokens default to O. Special tokens such as [CLS]/[SEP] use -100 so
+    Hugging Face ignores them in both the token-classification loss and metrics
+    """
     labels = np.full(len(offsets), label2id["O"], dtype=int)
     for idx, (start, end) in enumerate(offsets):
         if start == 0 and end == 0:
@@ -123,7 +125,7 @@ def tokenize_align(tokenizer, data):
     return tokenized
 
 
-# Apply IOB assignment function
+# Apply BIO assignment function
 def encode_data(tokenizer, data):
     tokenized = data.apply(lambda row: tokenize_align(tokenizer, row), axis=1)
     return tokenized
@@ -252,8 +254,10 @@ def evaluation_metrics(eval_pred):
     )
     token_accuracy = accuracy_score(flat_true_labels, flat_predictions)
 
-    # f1/precision/recall deliberately refer to exact span metrics so Trainer
-    # selects the checkpoint that is best at extracting complete aspect terms.
+    """
+    f1/precision/recall deliberately refer to exact span metrics so Trainer
+    selects the checkpoint that is best at extracting complete aspect terms.
+    """
     return {
         "accuracy": token_accuracy,
         "f1": span_f1,
@@ -383,16 +387,17 @@ def extract_aspects(text, model, tokenizer, max_length=128):
 
         label = id2label[pred]
 
-        # FIXED: Matched label strings to your configured "Begin-Asp" and "Inside-Asp"
         if label == "Begin-Asp":
             if current_aspect:
                 aspects.append(current_aspect.strip())
             current_aspect = text[start:end]
 
         elif label == "Inside-Asp":
-            # Slices text and ensures proper word spacing if tokens are broken down.
-            # If the model emits an orphan I-tag, start a new aspect instead of
-            # silently dropping it.
+            """
+            Slices text and ensures proper word spacing if tokens are broken down.
+            If the model emits an orphan I-tag, start a new aspect instead of
+            silently dropping it.
+            """
             chunk = text[start:end]
             if current_aspect:
                 if start > 0 and text[start-1] == " " and not current_aspect.endswith(" "):
