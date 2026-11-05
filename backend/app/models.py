@@ -43,7 +43,7 @@ class RecommendationRequest(BaseModel):
         ),
     )
 
-    # There are 30 laptops in the thesis dataset, so the API can return all 30.
+    # Allow all 30 laptops in the results
     top_n: int = Field(default=5, ge=1, le=30)
 
     @field_validator("weights")
@@ -79,10 +79,9 @@ class TwoStageRefinementRequest(BaseModel):
     """
 
     filters: RecommendationFilters = Field(default_factory=RecommendationFilters)
-    # Original Stage 1 weights are frozen for server-side shortlist verification.
+    # Keep the original Stage 1 weights for verification
     initial_weights: Dict[str, float]
-    # Stage 2 includes ALL Stage 1 aspects (weights may change) AND at least
-    # one newly selected aspect. The backend uses these weights for reranking.
+    # Stage 2 keeps earlier aspects and adds at least one new aspect
     refined_weights: Dict[str, float]
     candidate_laptop_ids: List[str] = Field(..., min_length=1, max_length=10)
 
@@ -246,7 +245,7 @@ class LaptopDetail(BaseModel):
 
     aspects: List[dict]
 
-    # Approved, offline-generated summaries stored on Laptop nodes.
+    # Approved summaries stored in Neo4j
     overall_summary: Optional[str] = None
     strengths_summary: Optional[str] = None
     weaknesses_summary: Optional[str] = None

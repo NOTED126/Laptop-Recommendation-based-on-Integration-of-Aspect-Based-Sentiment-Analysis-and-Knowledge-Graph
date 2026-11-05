@@ -12,17 +12,14 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
 
 def format_safe_filename(name: str) -> str:
-    """Strips invalid file characters and standardizes spaces/hyphens to underscores."""
+    # Make a safe file name
     cleaned = re.sub(r'[\\/*?:"<>|]', '', name)
     cleaned = re.sub(r'[\s-]+', '_', cleaned)
     return cleaned.strip('_')
 
 
 def clean_price_to_float(raw_text: str) -> float | None:
-    """Strips currency symbols and commas, converting raw price text into a float.
-
-    Example: '$1,088.50' -> 1088.50
-    """
+    # Convert price text into a number
     if not raw_text:
         return None
     match = re.search(r'[\d,]+(?:\.\d+)?', raw_text)
@@ -48,7 +45,7 @@ class LaptopSpecScraper:
         self.output_folder = output_folder
         self.driver = None
 
-        # Desired specs to extract
+        # Specification fields
         self.desired_specs = desired_specs or [
             # General
             'Color',
@@ -119,7 +116,7 @@ class LaptopSpecScraper:
         os.makedirs(self.output_folder, exist_ok=True)
 
     def init_driver(self):
-        """Initializes the Firefox WebDriver instance."""
+        # Start Firefox WebDriver
         options = Options()
         options.binary_location = self.firefox_binary
         options.add_argument("--lang=en-US")
@@ -131,7 +128,7 @@ class LaptopSpecScraper:
         self.driver.set_page_load_timeout(30)
 
     def extract_price(self) -> float | None:
-        """Extracts and parses the price from the main product page."""
+        # Read the laptop price
         try:
             price_elem = WebDriverWait(self.driver, 5).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, self.css_price))
@@ -152,7 +149,7 @@ class LaptopSpecScraper:
             return None
 
     def extract_primary_image(self) -> str | None:
-        """Extracts the product image source URL from the main page."""
+        # Get the laptop image URL
         try:
             image_elem = WebDriverWait(self.driver, 5).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, self.css_primary_image))
@@ -165,7 +162,7 @@ class LaptopSpecScraper:
             return None
 
     def open_specifications_drawer(self):
-        """Scrolls to the specs section and opens the modal drawer."""
+        # Open the specifications panel
         try:
             print("Scrolling to Specifications section...")
             specs_section = WebDriverWait(self.driver, 10).until(
@@ -185,7 +182,7 @@ class LaptopSpecScraper:
             print("Could not click 'See all specifications'. Checking if drawer is already active...")
 
     def parse_drawer_specifications(self, product_data: dict) -> dict:
-        """Parses specification values from the open drawer container."""
+        # Read values from the specifications panel
         spec_container = WebDriverWait(self.driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, self.css_drawer_container))
         )
@@ -217,7 +214,7 @@ class LaptopSpecScraper:
         return product_data
 
     def scrape_laptop(self, laptop_info: dict) -> dict | None:
-        """Processes a single laptop URL and exports its specifications CSV."""
+        # Scrape one laptop and save its specifications
         brand = laptop_info['brand']
         model = laptop_info['model']
         name = laptop_info['name']
@@ -261,7 +258,7 @@ class LaptopSpecScraper:
             return None
 
     def save_product_csv(self, product_data: dict):
-        """Saves individual product specification dict as a standardized CSV file."""
+        # Save one laptop specifications CSV
         df_single = pd.DataFrame([product_data])
 
         columns_order = ['Brand', 'Model', 'Product Name', 'Product URL', 'Price ($)', 'Image URL'] + self.desired_specs
@@ -274,7 +271,7 @@ class LaptopSpecScraper:
         print(f"Saved individual CSV to: {output_file}")
 
     def scrape_all(self, laptops_list: list[dict]) -> list[dict]:
-        """Iterates over a list of laptops and executes the extraction process."""
+        # Scrape each laptop in the list
         all_specs = []
         for laptop in laptops_list:
             result = self.scrape_laptop(laptop)
@@ -284,7 +281,7 @@ class LaptopSpecScraper:
         return all_specs
 
     def close(self):
-        """Closes the Selenium browser driver."""
+        # Close the browser
         if self.driver:
             self.driver.quit()
             print("Driver successfully closed.")

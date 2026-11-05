@@ -17,8 +17,7 @@ const DEFAULT_WEIGHTS = {
   THERMAL_PERFORMANCE: 20,
 };
 
-// Keep the underlying Neo4j evidence but exclude overlapping umbrella aspects
-// from the recommendation preferences and user-facing aspect breakdowns.
+// Keep historical evidence, but hide overlapping preference aspects
 const RETIRED_ASPECT_IDS = new Set(["FEATURE_SET"]);
 
 const EMPTY_FILTERS = {
@@ -47,7 +46,7 @@ function evidenceClass(level) {
   return `evidence ${level || "no_evidence"}`;
 }
 
-// This quantity-based measure is not a calibrated probability of correctness.
+// Evidence confidence is not a prediction probability
 const EVIDENCE_SUPPORT_EXPLANATION =
   "Evidence support measures the quantity of review mentions across the selected aspects. " +
   "It is not the probability that this recommendation is correct.";
@@ -56,8 +55,7 @@ function hasDirectReviewEvidence(aspect) {
   return Number(aspect.mention_count ?? 0) > 0;
 }
 
-// Suppress prior-only estimates from user-facing score bars and numerical tables.
-// The unchanged backend may still use the aspect prior when ranking laptops.
+// Hide estimated scores when there are no reviews
 function supportedScore100(aspect) {
   if (!hasDirectReviewEvidence(aspect) || aspect.adjusted_score == null) return null;
   const score = Number(aspect.adjusted_score) * 100;
@@ -71,17 +69,15 @@ function getPreviewAspects(breakdown, mode) {
   );
 
   if (mode === "custom" || mode === "guided") {
-    // Weighted modes are explanatory breakdowns, not limited highlights.
-    // Show every selected, positively weighted aspect (including no-evidence
-    // rows), ordered by weight, so the displayed breakdown is complete.
+    // Show all weighted aspects
     return [...available]
       .sort((a, b) => Number(b.normalized_weight) - Number(a.normalized_weight) ||
         a.aspect_name.localeCompare(b.aspect_name));
   }
 
-  // Balanced rankings have equal weights. Show both higher- and lower-scoring
-  // aspects, preferring those with >= 10 mentions (moderate/strong support).
-  // Add aspects with >= 5 mentions only if fewer than four stronger rows exist.
+  // In Balanced mode, show strong and weak aspects
+  // Prefer aspects mentioned in at least 10 reviews
+  // Use 5-review aspects if too few meet that threshold
   const wellSupported = available.filter((a) => Number(a.mention_count) >= 10);
   const limited = available.filter(
     (a) => Number(a.mention_count) >= 5 && Number(a.mention_count) < 10
@@ -116,18 +112,16 @@ function App() {
   const [guidedAdditionalIds, setGuidedAdditionalIds] = useState([]);
   const [guidedInitialWeights, setGuidedInitialWeights] = useState({});
   const [guidedRefinedWeights, setGuidedRefinedWeights] = useState({});
-  // Freeze the initial candidate IDs, original filter values, and original
-  // aspect weights. They are never recomputed from edited form values.
+  // Save the original shortlist, filters and weights
   const [guidedShortlist, setGuidedShortlist] = useState(null);
   const [guidedStage, setGuidedStage] = useState("initial");
 
   const [results, setResults] = useState([]);
-  // Capture the mode that generated the displayed results. Changing the
-  // preference form afterwards must not silently change the preview logic.
+  // Keep the mode used for these results
   const [resultsMode, setResultsMode] = useState("balanced");
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedLaptop, setSelectedLaptop] = useState(null);
-  // Comparison is local to the displayed recommendation result set.
+  // Compare laptops from the current results only
   const [compareIds, setCompareIds] = useState([]);
   const [compareOpen, setCompareOpen] = useState(false);
 
@@ -152,8 +146,8 @@ function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Pending is the only trustworthy progress signal without a streaming API.
-  // After 10 seconds, explain that a cloud service may be waking from idle.
+  // Show progress while the request is pending
+  // Mention possible server wake-up after a delay
   useEffect(() => {
     setSearchSlow(false);
     if (!searching) return;
@@ -228,7 +222,7 @@ function App() {
 
   function updateGuidedInitialWeight(aspectId, value) {
     setGuidedInitialWeights((current) => ({ ...current, [aspectId]: Number(value) }));
-    // The original weights determine Stage 1 shortlist membership.
+    // Use the original weights for the Stage 1 shortlist
     if (guidedShortlist) resetGuidedShortlist();
   }
 
@@ -276,7 +270,7 @@ function App() {
   function removeComparisonLaptop(laptopId) {
     const updated = compareIds.filter((id) => id !== laptopId);
     setCompareIds(updated);
-    // The comparison requires at least two laptops to remain meaningful.
+    // Compare at least two laptops
     if (updated.length < 2) setCompareOpen(false);
   }
 
@@ -385,8 +379,7 @@ function App() {
       setResults(response.recommendations);
       setResultsMode(recommendationMode);
       setHasSearched(true);
-      // A new ranking may exclude earlier candidates or use different weights.
-      // Clear comparisons instead of comparing stale recommendation results.
+      // Clear comparisons when ranking results change
       setCompareIds([]);
       setCompareOpen(false);
 
@@ -1394,8 +1387,8 @@ function RecommendationCard({
 }
 
 
-// The approved review summary is rendered as safe text fragments, not HTML.
-// Emphasized phrases remain character-for-character identical to the database.
+// Render review summaries as text, not HTML
+// Keep highlighted words unchanged
 function ExperienceSummaryText({ text, fallback }) {
   return <>{splitExperienceSummary(text || fallback).map((part, index) =>
     part.tone
@@ -1405,8 +1398,8 @@ function ExperienceSummaryText({ text, fallback }) {
 }
 
 function LaptopModal({ laptop, onClose }) {
-  // Keep all 23 selectable aspects in both the chart and detailed table.
-  // Rows without mentions display N/A and cannot request source reviews.
+  // Show all selectable aspects in charts and tables
+  // Use N/A when no reviews mention the aspect
   const selectableAspects = laptop.aspects.filter(
     (a) => !RETIRED_ASPECT_IDS.has(a.aspect_id)
   );
@@ -1659,8 +1652,7 @@ function LaptopModal({ laptop, onClose }) {
   );
 }
 
-// Visualize stored, offline-calculated scores. This chart never runs ATE/ABSA
-// or changes the user's preference-based recommendation ranking.
+// Chart the stored aspect scores only
 function AspectScoreChart({ aspects }) {
   const ordered = [...aspects].sort((a, b) => {
     const aSupported = hasDirectReviewEvidence(a);

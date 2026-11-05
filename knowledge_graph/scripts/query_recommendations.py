@@ -1,48 +1,8 @@
 """
-query_recommendations.py
-========================
+Query Neo4j for filtered, weighted laptop recommendations
 
-Query the local Neo4j/Aura knowledge graph for evidence-aware laptop
-recommendations.
-
-Workflow
---------
-1. Apply hard specification filters.
-2. Normalize user aspect weights.
-3. Rank eligible laptops using HAS_ASPECT_SCORE.adjusted_score.
-4. Calculate evidence confidence separately.
-5. Return the top N laptops.
-6. Retrieve per-aspect breakdowns for explainability.
-7. Optionally save both tables as CSV files.
-
-The same script works against local Neo4j and AuraDB by changing the
-NEO4J_* environment variables.
-
-Examples
---------
-No specification filters, weighted experience ranking:
-
-    python knowledge_graph/scripts/query_recommendations.py ^
-      --weights "BATTERY_LIFE=50,PERFORMANCE=30,THERMAL_PERFORMANCE=20"
-
-With specification filters:
-
-    python knowledge_graph/scripts/query_recommendations.py ^
-      --min-ram 16 ^
-      --min-storage 512 ^
-      --max-price 1500 ^
-      --weights "BATTERY_LIFE=50,PERFORMANCE=30,THERMAL_PERFORMANCE=20"
-
-Brand / CPU / GPU filters:
-
-    python knowledge_graph/scripts/query_recommendations.py ^
-      --brand "Lenovo" ^
-      --cpu-brand "AMD" ^
-      --gpu-brand "NVIDIA" ^
-      --weights "PERFORMANCE=60,BATTERY_LIFE=40"
-
-PowerShell line continuation uses the backtick (`), while CMD uses ^.
-Putting the command on one line works in both shells.
+Uses stored aspect scores and returns ranking and evidence breakdowns
+Connection details come from NEO4J_* settings
 """
 
 import argparse
@@ -69,12 +29,8 @@ DEFAULT_WEIGHTS = {
 
 def parse_weights(text):
     """
-    Parse:
-        BATTERY_LIFE=50,PERFORMANCE=30
-    or:
-        BATTERY_LIFE=0.5,PERFORMANCE=0.3
-
-    Values are normalized to sum to 1.
+    Read aspect weights such as BATTERY_LIFE=50,PERFORMANCE=30
+    Normalize the values to sum to 1
     """
     if not text:
         raw = dict(DEFAULT_WEIGHTS)
@@ -161,11 +117,7 @@ def validate_weights(weights, valid_aspects):
 
 
 def build_filter_clause(args):
-    """
-    Return (Cypher WHERE expressions, parameters).
-
-    Only supplied filters are included.
-    """
+    # Build WHERE clauses and parameters for the supplied filters
     clauses = []
     params = {}
 

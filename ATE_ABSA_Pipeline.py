@@ -23,9 +23,7 @@ DEFAULT_MAX_LENGTH = 128
 DEFAULT_OVERLAP_TOKENS = 16
 
 
-# -----------------------------
 # Model loading
-# -----------------------------
 def load_pipeline_models(
     ate_model_path=ATE_MODEL_PATH,
     absa_model_path=ABSA_MODEL_PATH,
@@ -58,9 +56,7 @@ def load_pipeline_models(
     )
 
 
-# -----------------------------
 # Text preparation
-# -----------------------------
 def clean_review_text(text):
     """Normalize whitespace without changing the review's wording."""
     if pd.isna(text):
@@ -168,9 +164,7 @@ def review_segments(
     return segments
 
 
-# -----------------------------
 # ATE + ABSA inference
-# -----------------------------
 def ate_absa_pipeline(
     text,
     aspect_model,
@@ -187,7 +181,7 @@ def ate_absa_pipeline(
         max_length=max_length,
     )
 
-    # Case-insensitive de-duplication while preserving the first original form.
+    # Remove duplicate terms, keeping the first spelling
     seen = set()
     unique_aspects = []
     for aspect in aspects:
@@ -258,8 +252,7 @@ def process_review(
             if not aspect_key:
                 continue
 
-            # Overlapping windows may detect the same aspect twice. Remove only
-            # those duplicate observations within the same sentence.
+            # Remove duplicate predictions from overlapping windows.
             dedup_key = (segment["sentence_id"], aspect_key, sentiment)
             if dedup_key in overlap_dedup:
                 continue
@@ -288,16 +281,9 @@ def process_review(
     return rows
 
 
-# -----------------------------
 # Review/laptop aggregation
-# -----------------------------
 def collapse_to_review_level(raw_predictions):
-    """
-    Give each review at most one final label per surface-normalized aspect.
-
-    Repeated mentions use majority sentiment. A tie becomes 'mixed' rather than
-    being incorrectly forced into the model's 'neutral' class.
-    """
+    # Keep one sentiment per aspect per review. Ties become mixed.
     if not raw_predictions:
         return []
 
@@ -335,12 +321,8 @@ def collapse_to_review_level(raw_predictions):
 
 def collapse_to_canonical_review_level(raw_predictions):
     """
-    Collapse mapped raw predictions to one sentiment per canonical aspect per review.
-
-    This is different from ``collapse_to_review_level``: synonyms such as
-    ``screen`` and ``display`` are merged into one ``DISPLAY_QUALITY`` opinion.
-    Rejected and unmapped ATE terms are deliberately excluded from canonical
-    aggregation but remain available in the raw output for canonical aspect mapping refinement.
+    Group mapped synonyms by canonical aspect within each review.
+    Keep rejected and unmapped terms in the raw output only.
     """
     if isinstance(raw_predictions, pd.DataFrame):
         rows_in = raw_predictions.to_dict("records")
@@ -386,7 +368,7 @@ def collapse_to_canonical_review_level(raw_predictions):
         winners = [sentiment for sentiment, count in counts.items() if count == highest]
         review_sentiment = winners[0] if len(winners) == 1 else "mixed"
 
-        # Keep a readable trace of the surface forms that fed the canonical aspect.
+        # Keep a readable trace of the surface forms that fed the canonical aspect
         unique_forms = []
         seen_forms = set()
         for form in raw_forms[key]:
@@ -417,13 +399,7 @@ def collapse_to_canonical_review_level(raw_predictions):
 
 
 def aggregate_canonical_laptop_aspects(canonical_review_df, aspect_type="experience"):
-    """
-    Aggregate canonical review-level opinions per laptop.
-
-    By default only user-experience aspects are included in the recommendation
-    summary. Passing ``aspect_type='specification'`` produces a separate summary
-    of specification-related review mentions.
-    """
+    # Combine review sentiment by laptop and aspect type
     columns = [
         "laptop", "canonical_aspect", "canonical_label", "aspect_type",
         "positive_reviews", "negative_reviews", "neutral_reviews",
@@ -471,7 +447,7 @@ def aggregate_canonical_laptop_aspects(canonical_review_df, aspect_type="experie
 
 
 def summarize_mapping_exceptions(raw_df, status="unmapped"):
-    """Summarize unmapped or rejected ATE outputs for iterative canonical aspect mapping review."""
+    # Summarize unmapped or rejected ATE outputs for iterative canonical aspect mapping review
     columns = [
         "aspect_key", "example_forms", "raw_mentions", "reviews_mentioning",
         "laptops_mentioning", "positive_mentions", "negative_mentions",
@@ -510,7 +486,7 @@ def summarize_mapping_exceptions(raw_df, status="unmapped"):
 
 
 def aggregate_laptop_aspects(review_level_df):
-    """Aggregate review-level aspect labels into per-laptop statistics."""
+    # Aggregate review-level aspect labels into per-laptop statistics
     if review_level_df.empty:
         return pd.DataFrame(
             columns=[
@@ -555,7 +531,7 @@ def aggregate_laptop_aspects(review_level_df):
 
 
 def detect_review_column(df, requested_column="Review"):
-    """Find the review text column case-insensitively."""
+    # Find the review text column case-insensitively
     lookup = {str(column).strip().casefold(): column for column in df.columns}
     requested_key = requested_column.strip().casefold()
 
@@ -572,7 +548,7 @@ def detect_review_column(df, requested_column="Review"):
 
 
 def infer_laptop_name(df, csv_path):
-    """Prefer CSV metadata; otherwise derive a readable name from the filename."""
+    # Prefer CSV metadata; otherwise derive a readable name from the filename
     column_lookup = {str(column).strip().casefold(): column for column in df.columns}
 
     if "brand" in column_lookup and "model" in column_lookup:
@@ -602,7 +578,7 @@ def process_review_file(
     max_length=DEFAULT_MAX_LENGTH,
     overlap_tokens=DEFAULT_OVERLAP_TOKENS,
 ):
-    """Process one laptop review CSV and return raw/review-level DataFrames."""
+    # Process one laptop review CSV and return raw/review-level DataFrames
     csv_path = Path(csv_path)
     df = pd.read_csv(csv_path)
     column = detect_review_column(df, review_column)
@@ -663,12 +639,7 @@ def process_review_directory(
     max_length=DEFAULT_MAX_LENGTH,
     overlap_tokens=DEFAULT_OVERLAP_TOKENS,
 ):
-    """
-    Process every review CSV and save both raw and canonical aspect normalized outputs.
-
-    The raw files preserve model traceability. Canonical files are the intended
-    inputs for the later Neo4j/recommendation stages.
-    """
+    # Run inference on review files and save raw and canonical outputs
     reviews_dir = Path(reviews_dir)
     output_dir = Path(output_dir)
 
@@ -766,9 +737,7 @@ def process_review_directory(
     )
 
 
-# -----------------------------
 # Small interactive/demo mode
-# -----------------------------
 def run_demo(
     aspect_model,
     aspect_tokenizer,

@@ -1,17 +1,6 @@
 """
-verify_neo4j_graph.py
-=====================
-
-Read-only verification utility for the laptop thesis graph.
-
-Example:
-    python knowledge_graph/scripts/verify_neo4j_graph.py
-
-Connection settings are read from:
-    NEO4J_URI
-    NEO4J_USERNAME
-    NEO4J_PASSWORD
-    NEO4J_DATABASE
+Check laptop graph counts and relationships without making changes
+Uses the NEO4J_* environment settings
 """
 
 import argparse

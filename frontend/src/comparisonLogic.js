@@ -1,4 +1,4 @@
-// Pure comparison logic. No backend calls and no change to recommendation scoring.
+// Calculate comparison values in the browser
 export const MIN_RADAR_MENTIONS = 10;
 
 export function finiteNumber(value) {
@@ -18,8 +18,8 @@ export function numericExtremes(items, valueOf, better = "higher") {
       value === (better === "lower" ? max : min) ? "worst" : null);
 }
 
-// Coverage is an absolute ratio, not a relative ranking or evidence strength.
-// Invalid and zero-denominator values are left unhighlighted.
+// Coverage is a direct ratio, not a relative score
+// Skip missing or invalid values
 export function selectedEvidenceCoverage(item) {
   const covered = finiteNumber(item?.selected_aspects_with_evidence);
   const selected = finiteNumber(item?.selected_aspects);
@@ -66,7 +66,7 @@ export function radarSelection(aspects, aspectMaps, count = 4, minimumMentions =
   );
   const included = new Set(selectedByLaptop.flatMap((part) => part.map((aspect) => aspect.aspect_id)));
   const axes = aspects.filter((aspect) => included.has(aspect.aspect_id));
-  // Order axes by average of available direct scores, never by nonexistent zeros.
+  // Sort axes by available scores, ignoring missing values
   const ordered = sortedAspects(axes, aspectMaps, "average", direction === "top" ? "desc" : "asc");
   return { axes: ordered, selectedByLaptop };
 }
@@ -123,9 +123,7 @@ export function specificationSummaries(items) {
   });
 }
 
-// Geometry and collision-aware labels for a shared-aspect SVG radar chart.
-// Using text labels rather than axis numbers keeps the chart readable without
-// requiring a lookup in the table beneath it. These functions are UI-only.
+// Place labels around the radar chart
 export function wrapRadarLabel(text, maxChars = 22) {
   const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
   const lines = [];
@@ -167,8 +165,7 @@ export function radarLabelLayout(axes) {
     };
   });
 
-  // Distribute labels separately along each side, keeping their relative axis
-  // order and a comfortable minimum gap even for unions of up to 18 aspects.
+  // Space labels on each side without changing their order
   for (const side of ["left", "right"]) {
     const group = labels.filter((label) => label.side === side).sort((a, b) => a.y - b.y);
     const margin = 66;

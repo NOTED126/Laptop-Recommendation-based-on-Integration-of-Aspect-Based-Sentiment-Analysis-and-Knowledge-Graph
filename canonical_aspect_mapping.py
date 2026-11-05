@@ -1,24 +1,9 @@
 """
-Canonical aspect categorization and normalization (version 3) for the thesis recommendation system.
+Map ATE terms to predefined laptop aspect categories.
 
-Purpose
--------
-The ATE model produces open-ended surface forms such as:
-    "battery", "battery life", "screen", "display", "fan noise", ...
-
-This module converts those surface forms into predefined canonical laptop aspect categories while
-remaining conservative:
-
-1. Known laptop-experience terms are mapped to canonical user-experience aspects.
-2. Hardware/specification terms are mapped separately so they can be retained for
-   analysis without being mixed into review-experience rankings.
-3. Clearly irrelevant/generic/noisy extractions are rejected.
-4. Unknown terms remain UNMAPPED instead of being guessed.
-
-Version 3 refines the canonical aspect mapping using the complete Best Buy corpus after the
-full ATE+ABSA inference run. It targets recurring high-confidence variants found
-across the 30-laptop corpus, adds upgradeability and NPU hardware concepts, and
-keeps context-sensitive or rare long-tail terms conservative.
+Version 3 uses exact aliases, text patterns and review context.
+Unknown terms remain unmapped; irrelevant terms are rejected.
+Hardware mentions are kept separate from experience aspects.
 """
 
 from __future__ import annotations
@@ -28,11 +13,9 @@ from dataclasses import dataclass, asdict
 from typing import Dict, Iterable, Optional, Tuple
 
 
-# -----------------------------------------------------------------------------
 # Canonical aspect metadata
-# -----------------------------------------------------------------------------
 CANONICAL_ASPECTS: Dict[str, Dict[str, str]] = {
-    # User-experience aspects used for recommendation/reranking.
+    # Experience aspects for ranking
     "PERFORMANCE": {
         "type": "experience",
         "label": "Performance",
@@ -149,9 +132,7 @@ CANONICAL_ASPECTS: Dict[str, Dict[str, str]] = {
         "description": "Reliability, stability, failures or persistent operational issues.",
     },
 
-    # Specification-like aspects. These are retained but are not intended to be
-    # mixed into the default user-experience ranking because the structured Best
-    # Buy specification data is the more reliable source of factual values.
+    # Keep hardware mentions separate from experience ratings
     "RAM_MEMORY": {
         "type": "specification",
         "label": "RAM / Memory",
@@ -175,9 +156,7 @@ CANONICAL_ASPECTS: Dict[str, Dict[str, str]] = {
 }
 
 
-# -----------------------------------------------------------------------------
 # Surface normalization
-# -----------------------------------------------------------------------------
 def normalize_surface(text: object) -> str:
     """Normalize an extracted surface form for canonical aspect lookup."""
     if text is None:
@@ -189,9 +168,7 @@ def normalize_surface(text: object) -> str:
     return value.strip(" \t\n\r.,;:!?\"'()[]{}")
 
 
-# -----------------------------------------------------------------------------
-# Explicit aliases from the exploratory sample
-# -----------------------------------------------------------------------------
+# Known aspect aliases
 EXPERIENCE_ALIASES: Dict[str, Iterable[str]] = {
     "PERFORMANCE": {
         "performance", "speed", "multitasking", "boot times", "boots",
@@ -313,8 +290,7 @@ SPECIFICATION_ALIASES: Dict[str, Iterable[str]] = {
 }
 
 
-# Clearly non-domain/generic extractions. These are rejected rather than treated
-# as user-experience dimensions. The original raw predictions are still saved.
+# Reject generic terms and extraction noise
 REJECT_EXACT = {
     "purchase", "product", "user", "users", "buyer", "buyers", "job",
     "homework", "work", "working", "school work", "watching", "tabs", "tab",
@@ -331,18 +307,17 @@ REJECT_EXACT = {
     'silent mode', 'energy saving mode', 'operating mode', 'mode', 'default', 'acer tv monitor', 'mac', 'switch 2', 'xbox ally x', 'surface pro devices', 'surface pro 11 type cover', 'up surface pro', 'internet browsing', 'internet surfing', 'web browsing with', 'web tasks', 'media streaming', 'online class', 'paper work', 'microsoft office', 'microsoft office work', 'programming', 'video calls', 'video conferencing', 'workstation', 'writing', 'tech purchases', 'customer satisfaction', 'cup of tea', 'choice', 'class', 'classes', 'cleaning', 'devices', 'devide', 'function', 'improvements', 'input', 'load', 'loading', 'marks', 'media', 'operation', 'operate', 'operates', 'personal', 'program', 'proprietary', 'resource', 'service', 'staff', 'system', 'tasks', 'unit', 'usage', 'using', 'utilities', 'waiting', 'window', 'word', 'zone', 'spec', 'arrangement', 'dedicated', 'hardware ecosystem', 'headroom', 'native', 'note-taking', 'prints', 'software tools', 'surface', 'tablets', 'tuning', 'view',
 }
 
-
-# Some short strings are legitimate laptop aspects; every other very short token
-# is treated as probable ATE noise.
+"""
+Some short strings are legitimate laptop aspects; every other very short token
+is treated as probable ATE noise.
+"""
 VALID_SHORT_TERMS = {
     "ai", "os", "2k", "ssd", "ram", "cpu", "apu", "gpu", "fsr", "vrr",
     "rgb", "usb",
 }
 
 
-# -----------------------------------------------------------------------------
 # Lookup tables
-# -----------------------------------------------------------------------------
 def _build_alias_lookup() -> Dict[str, Tuple[str, str]]:
     lookup: Dict[str, Tuple[str, str]] = {}
 
@@ -360,8 +335,10 @@ def _build_alias_lookup() -> Dict[str, Tuple[str, str]]:
 ALIAS_LOOKUP = _build_alias_lookup()
 
 
-# Conservative keyword rules for variants that did not appear exactly in the
-# 100-review sample. Rule order is important: more specific concepts first.
+"""
+Match common variants not covered by aliases.
+More specific rules come first.
+"""
 REGEX_RULES = [
     (re.compile(r"\b(gaming|game|games)\b"), "GAMING_PERFORMANCE", "experience"),
     (re.compile(r"\b(touch\s*screen|touchscreen)\b"), "TOUCHSCREEN_EXPERIENCE", "experience"),
@@ -427,12 +404,7 @@ def _mapped_decision(
 
 
 def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
-    """
-    Classify one extracted aspect.
-
-    Unknown terms are intentionally returned as ``unmapped`` rather than guessed.
-    That makes canonical aspect mapping coverage measurable and lets the mapping evolve safely.
-    """
+    # Map an extracted term to a canonical category, or reject or leave it unmapped
     raw_aspect = "" if aspect is None else str(aspect)
     aspect_key = normalize_surface(raw_aspect)
     context_key = normalize_surface(context)
@@ -449,7 +421,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
             mapping_reason="empty aspect",
         )
 
-    # Known irrelevant/generic domain terms.
+    # Known irrelevant/generic domain terms
     if aspect_key in REJECT_EXACT:
         return AspectDecision(
             raw_aspect=raw_aspect,
@@ -462,7 +434,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
             mapping_reason="generic, use-case, product-name or non-laptop-quality term",
         )
 
-    # Common generic verbs need context before they are considered useful.
+    # Common generic verbs need context before they are considered useful
     if aspect_key == "use":
         if re.search(r"\b(easy|simple|intuitive|hard|difficult|confusing)\b", context_key):
             return _mapped_decision(
@@ -474,7 +446,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
             "reject_context", "generic 'use' without an ease-of-use cue",
         )
 
-    # Context-sensitive ambiguous nouns/verbs.
+    # Context-sensitive ambiguous nouns/verbs
     if aspect_key in {"run", "runs"} and re.search(r"\b(gaming|game|games)\b", context_key):
         return _mapped_decision(
             raw_aspect, aspect_key, "GAMING_PERFORMANCE", "experience", "context_rule",
@@ -623,7 +595,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
 
 
 def canonical_aspect_table():
-    """Return canonical aspect category metadata as a list of dictionaries."""
+    # Return canonical aspect category metadata as a list of dictionaries
     rows = []
     for canonical, metadata in CANONICAL_ASPECTS.items():
         rows.append(
@@ -637,12 +609,12 @@ def canonical_aspect_table():
     return rows
 
 
-# =============================================================================
-# Version 3 full-corpus refinement
-# =============================================================================
-# Keep the v2 classifier available as the conservative fallback. The v3 rules
-# below were derived from recurring terms in the complete 30-laptop Best Buy
-# corpus. Specific context rules are evaluated before exact mappings/rejections.
+"""
+Version 3 full-corpus refinement
+
+The v3 rules below were derived from recurring terms in the complete 30-laptop Best Buy
+corpus. Specific context rules are evaluated before exact mappings/rejections.
+"""
 _classify_aspect_v2 = classify_aspect
 
 CANONICAL_ASPECTS.update({
@@ -800,9 +772,10 @@ V3_EXACT_MAP = {
     "neural processing unit": ("NPU_AI_ACCELERATOR", "specification"),
 }
 
-# High-confidence non-aspects discovered repeatedly in the full corpus. These
-# are retained in the raw output but intentionally excluded from recommendation
-# aggregation.
+"""
+High-confidence non-aspects discovered repeatedly in the full corpus. These
+are retained in the raw output but intentionally excluded from recommendation aggregation
+"""
 V3_REJECT_EXACT = {
     # Brands/models/comparisons.
     "dell", "alienware", "rog flow", "flow", "hp victus", "acer predator",
@@ -861,14 +834,12 @@ def _v3_unmapped(raw_aspect, aspect_key, reason):
 
 
 def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
-    """Version-3 classifier using full-corpus recurring terms plus v2 fallback."""
+    # Version-3 classifier using full-corpus recurring terms plus v2 fallback.
     raw_aspect = "" if aspect is None else str(aspect)
     aspect_key = normalize_surface(raw_aspect)
     context_key = normalize_surface(context)
 
-    # ------------------------------------------------------------------
     # High-value ambiguous/context-sensitive terms.
-    # ------------------------------------------------------------------
     if aspect_key == "quality":
         if re.search(r"\b(speaker|speakers|audio|sound|bass|volume)\b", context_key):
             return _v3_mapped(raw_aspect, aspect_key, "AUDIO", "experience", "quality refers to audio")
@@ -1217,9 +1188,7 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
     if aspect_key == "ice blue color":
         return _v3_mapped(raw_aspect, aspect_key, "DESIGN", "experience", "chassis color/design")
 
-    # ------------------------------------------------------------------
-    # Stable exact mappings/rejections identified across the full corpus.
-    # ------------------------------------------------------------------
+    # Stable exact mappings/rejections identified across the full corpus
     if aspect_key in V3_EXACT_MAP:
         canonical, aspect_type = V3_EXACT_MAP[aspect_key]
         return _v3_mapped(raw_aspect, aspect_key, canonical, aspect_type, "recurring full-corpus variant")
@@ -1227,17 +1196,20 @@ def classify_aspect(aspect: object, context: object = "") -> AspectDecision:
     if aspect_key in V3_REJECT_EXACT:
         return _v3_rejected(raw_aspect, aspect_key, "brand/model/use-case/service/accessory/generic term outside canonical laptop-quality aspects")
 
-    # Preserve the original conservative canonical aspect mapping for everything not covered by
-    # the full-corpus v3 refinement.
+    """
+    Fall back to the earlier mapping rules
+    the full-corpus v3 refinement
+    """
     return _classify_aspect_v2(aspect, context)
 
 
-# -----------------------------------------------------------------------------
-# Version 3 residual long-tail cleanup
-# -----------------------------------------------------------------------------
-# A final conservative pass handles recurring terms that remained after the main
-# v3 rules. The goal is not zero unmapped terms; it is to remove obvious generic
-# noise while mapping only recurring, defensible laptop concepts.
+"""
+Version 3 residual long-tail cleanup
+
+A final conservative pass handles recurring terms that remained after the main
+v3 rules. The goal is not zero unmapped terms; it is to remove obvious generic
+noise while mapping only recurring, defensible laptop concepts.
+"""
 _classify_aspect_v3_core = classify_aspect
 
 V3_RESIDUAL_EXACT_MAP = {

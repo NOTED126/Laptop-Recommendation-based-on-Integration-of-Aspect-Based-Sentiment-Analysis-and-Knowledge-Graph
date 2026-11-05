@@ -1,27 +1,8 @@
 """
-Small-subset tester for the revised ATE_ABSA_Pipeline.py.
+Test ATE–ABSA inference on a small sample of Best Buy reviews
 
-Purpose
--------
-Run the trained ATE + ABSA models on a small, reproducible subset of real
-Best Buy review CSVs before processing the full review collection.
-
-Place this file in the same project directory as:
-    ATE_ABSA_Pipeline.py
-    ATE_train_model.py
-    ABSA_train_model.py
-    aspect_extraction/best_model/
-    aspect_sentiment/best_model/
-
-Example
--------
-python test_pipeline_subset.py --reviews-dir "reviews"
-
-A slightly larger sample:
-python test_pipeline_subset.py --reviews-dir "reviews" --laptops 3 --reviews-per-laptop 15
-
-Test specific CSV files:
-python test_pipeline_subset.py --reviews-dir "reviews" --files "Laptop_A_reviews.csv" "Laptop_B_reviews.csv"
+Example: python test_pipeline_subset.py --reviews-dir reviews
+Use --laptops and --reviews-per-laptop to adjust the sample
 """
 
 import argparse
@@ -46,7 +27,7 @@ from ATE_ABSA_Pipeline import (
 
 
 def choose_csv_files(reviews_dir, requested_files=None, laptop_count=2, seed=42):
-    """Choose specific CSVs or a reproducible random subset of review CSVs."""
+    # Choose specific CSVs or a reproducible random subset of review CSVs
     reviews_dir = Path(reviews_dir)
 
     if not reviews_dir.exists():
@@ -74,7 +55,7 @@ def choose_csv_files(reviews_dir, requested_files=None, laptop_count=2, seed=42)
 
 
 def sample_reviews_from_file(csv_path, review_column="Review", review_count=10, seed=42):
-    """Load, clean, de-duplicate and reproducibly sample reviews from one CSV."""
+    # Load, clean, de-duplicate and reproducibly sample reviews from one CSV
     df = pd.read_csv(csv_path)
     column = detect_review_column(df, review_column)
     laptop = infer_laptop_name(df, csv_path)
@@ -98,7 +79,7 @@ def sample_reviews_from_file(csv_path, review_column="Review", review_count=10, 
 
 
 def print_review_result(laptop, sample_number, source_row, review_text, predictions):
-    """Print one sampled review and its aspect/sentiment predictions."""
+    # Print one sampled review and its aspect/sentiment predictions
     print("\n" + "=" * 110)
     print(f"LAPTOP: {laptop}")
     print(f"SAMPLE REVIEW: {sample_number} | ORIGINAL CSV ROW: {source_row}")
@@ -131,7 +112,7 @@ def run_subset_test(
     ate_model_path=ATE_MODEL_PATH,
     absa_model_path=ABSA_MODEL_PATH,
 ):
-    """Run the ATE+ABSA pipeline on a small subset and save inspection files."""
+    # Run the ATE+ABSA pipeline on a small subset and save inspection files
     if reviews_per_laptop <= 0:
         raise ValueError("--reviews-per-laptop must be at least 1")
 
@@ -170,7 +151,7 @@ def run_subset_test(
     global_review_id = 0
 
     for file_index, csv_path in enumerate(selected_files, start=1):
-        # Offset seed per file so each laptop gets a different but reproducible sample.
+        # Use a repeatable sample for each laptop
         laptop, sampled_reviews = sample_reviews_from_file(
             csv_path,
             review_column=review_column,
@@ -252,7 +233,7 @@ def run_subset_test(
     review_level_df.to_csv(review_level_path, index=False)
     summary_df.to_csv(summary_path, index=False)
 
-    # A convenient sheet for manually checking a sample of individual predictions.
+    # Save sample predictions for manual review
     if raw_df.empty:
         manual_df = pd.DataFrame(
             columns=[

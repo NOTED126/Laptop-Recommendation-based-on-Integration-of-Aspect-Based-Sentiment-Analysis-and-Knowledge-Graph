@@ -1,13 +1,6 @@
-"""Reclassify saved ATE+ABSA raw predictions with canonical aspect mapping v3.
-
-This script does NOT rerun DistilBERT. It reuses raw_aspect_predictions.csv,
-updates canonical aspect mapping decisions, then regenerates canonical review- and laptop-level
-CSV outputs.
-
-Example:
-    python reaggregate_canonical_aspects_v3.py \
-        --raw "pipeline_output/raw_aspect_predictions.csv" \
-        --output-dir "pipeline_output_v3"
+"""
+Apply the final canonical mapping rules to saved ATE–ABSA predictions.
+Regenerate review-level and laptop-level CSVs without rerunning the models
 """
 
 from __future__ import annotations

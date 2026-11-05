@@ -7,8 +7,7 @@ from .db import db
 from .models import RecommendationRequest, TwoStageRefinementRequest
 
 
-# Retain historical evidence in Neo4j, but do not use overlapping
-# umbrella aspects as user-selectable recommendation preferences.
+# Keep historical data, but hide overlapping aspects from preferences
 RETIRED_RECOMMENDATION_ASPECT_IDS = frozenset({"FEATURE_SET"})
 
 
@@ -231,7 +230,7 @@ def get_filter_options():
 def recommendation_query(filter_clauses, restrict_to_candidates=False):
     clauses = list(filter_clauses)
     if restrict_to_candidates:
-        # Query-level restriction: Stage 2 cannot introduce non-shortlisted laptops.
+        # Stage 2 can rank only the original shortlist
         clauses.append("l.laptop_id IN $candidate_laptop_ids")
 
     where_text = ""
@@ -370,7 +369,7 @@ def get_recommendations(request: RecommendationRequest, candidate_laptop_ids=Non
     params["weights"] = weights
     params["top_n"] = request.top_n
     if candidate_laptop_ids is not None:
-        # Never accept duplicates or an empty candidate pool.
+        # Reject duplicate or empty shortlists
         if not candidate_laptop_ids or len(set(candidate_laptop_ids)) != len(candidate_laptop_ids):
             raise HTTPException(status_code=422, detail="Invalid shortlist candidate IDs")
         params["candidate_laptop_ids"] = candidate_laptop_ids
@@ -438,14 +437,10 @@ def get_recommendations(request: RecommendationRequest, candidate_laptop_ids=Non
 
 
 def get_refined_recommendations(request: TwoStageRefinementRequest):
-    """Revalidate Stage 1 and rerank the exact frozen candidate set.
-
-    This remains a stateless workflow: the frontend keeps the shortlist, while
-    the backend recalculates its membership rather than trusting arbitrary IDs.
-    Ranking scores, support metrics, and breakdowns use the existing formula.
     """
-    # Stage 1 weights are unchanged for verification; Stage 2 can change the
-    # relative importance of those aspects while adding new ones.
+    Check the original shortlist on the server before Stage 2 reranking
+    Verify with original weights; allow updated weights in Stage 2
+    """
     validate_aspect_ids(request.refined_weights)
 
     stage_one = get_recommendations(RecommendationRequest(
@@ -581,14 +576,7 @@ def get_laptop_detail(laptop_id: str):
 
 
 def _balanced_review_sample(rows, limit):
-    """
-    Return a deterministic, sentiment-diverse evidence sample.
-
-    We round-robin positive, negative, neutral and mixed evidence so a large
-    positive majority does not hide the smaller amount of critical or neutral
-    evidence. Within each sentiment, the Cypher query uses a deterministic
-    source-review order.
-    """
+    # Sample reviews across sentiment classes in a consistent order
     if limit <= 0:
         return []
 

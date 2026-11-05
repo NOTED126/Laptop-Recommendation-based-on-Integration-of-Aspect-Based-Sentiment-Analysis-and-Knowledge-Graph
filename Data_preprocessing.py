@@ -6,7 +6,7 @@ SEMEVAL_LAPTOP = "SemEval_2014_dataset/Laptop_Train_v2.csv"
 SEMEVAL_RESTAURANT = "SemEval_2014_dataset/Restaurants_Train_v2.csv"
 FINAL_DATA = "SemEval_2014_dataset/Final_SemEval.csv"
 
-# Class for SemEval 2014 dataset modification
+# SemEval 2014 preprocessing
 class SemEvalPipeline:
     def __init__(self, paths: dict):
         self.paths = paths
@@ -45,7 +45,7 @@ class SemEvalPipeline:
 
         return self.datasets
 
-    # Merge multiple datasets into one single dataset
+    # Combine the datasets
     def merge_dataset(self):
         if not self.datasets:
             raise ValueError("No datasets loaded. Run load_dataset() first")
@@ -54,7 +54,7 @@ class SemEvalPipeline:
         self.plot_sentiment_distribution(self.combined_data, f"SemEval 2014 {' & '.join(self.paths.keys())}")
         return self.combined_data
 
-    # Process the data by removing empty values and simplifying distribution
+    # Clean missing values and sentiment labels
     def process(self):
         if self.combined_data is None:
             raise ValueError("No combined dataset found. Run merge_dataset() first")
@@ -63,7 +63,7 @@ class SemEvalPipeline:
         length_before = len(data)
         print(f"Length before dropping rows without aspects: {length_before}")
 
-        # Dropping rows with missing aspects
+        # Remove rows with missing aspects
         data = data.dropna(subset=["aspect"])
         length_after = len(data)
 
@@ -80,7 +80,7 @@ class SemEvalPipeline:
 
         """
         For simpler sentiment distribution, the conflict class is removed.
-        Turning the data into a 3-class distribution.
+        Turning the data into a 3-class distribution
         """
         data = data[data["sentiment"] != "conflict"].reset_index(drop=True)
         print("\nRemoving the class 'conflict'...\nFinal Data: ")
@@ -98,15 +98,15 @@ class SemEvalPipeline:
         self.final_data.to_csv(FINAL_DATA, index=False)
         print(f"Dataset successfully exported to CSV at: {FINAL_DATA}")
 
-# Main function
+# Run preprocessing
 def main():
-    # Define SemEval dataset configuration
+    # Dataset settings
     dataset_configs = {
         "Laptop": "SemEval_2014_dataset/Laptop_Train_v2.csv",
         "Restaurant": "SemEval_2014_dataset/Restaurants_Train_v2.csv"
     }
 
-    # Initialize and run the SemEval data preprocesing pipeline
+    # Process both SemEval datasets
     SemPipeline = SemEvalPipeline(paths=dataset_configs)
     SemPipeline.load_dataset()
     SemPipeline.merge_dataset()

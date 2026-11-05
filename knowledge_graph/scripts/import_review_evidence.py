@@ -1,16 +1,6 @@
 """
-import_review_evidence.py
-=========================
-
-Import the prepared review provenance layer into the existing Neo4j/AuraDB
-thesis graph.
-
-Creates:
-    (:Review)
-    (Laptop)-[:HAS_REVIEW]->(Review)
-    (Review)-[:MENTIONS]->(Aspect)
-
-Connection settings are loaded from backend/.env automatically.
+Import Review nodes, HAS_REVIEW and MENTIONS links into Neo4j
+Reads connection settings from backend/.env
 """
 
 import argparse
